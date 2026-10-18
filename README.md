@@ -5,12 +5,12 @@
 ```
 inzynierka/
 ├── common/           # C++ współdzielony przez STM32 i RP2040 (bez zależności od HAL)
-│   ├── include/hal/Hal.hpp          # interfejsy: ISpi, IOutputPin, IClock
+│   ├── include/hal/Hal.hpp          # interfejsy: ISpi, II2c, IOutputPin, IInputPin, IClock
 │   ├── nrf24/                       # sterownik nRF24L01+ (polling, dynamic payload, ACK payload)
 │   └── proto/                       # Messages.hpp (pakiety), Frame (ramkowanie USB/UART, CRC-8)
 ├── stm/              # firmware roweru, NUCLEO-L4A6ZG (CubeMX + CMake, C++17)
 │   ├── stm.ioc                      # cała konfiguracja peryferiów -> generacja CubeMX
-│   ├── Core/                        # kod generowany; jedyna zmiana: app_main() w USER CODE 2
+│   ├── Core/                        # kod generowany; zmiany tylko w USER CODE: app_main(), IRQ IMU
 │   └── App/                         # aplikacja (opis niżej)
 ├── base/             # stacja bazowa: Waveshare RP2040-One + nRF24 <-> USB (Pico SDK, C++17)
 ├── tools/            # narzędzia laptopa (Python): bikelink.py (protokół), link_console.py
@@ -26,8 +26,8 @@ inzynierka/
                           │                                                                         │
      nRF24L01+ ───────────┤ SPI1 PA5/PA6/PA7, CE PD15, CSN PD14, IRQ PF12                           │
      ACS37041 (prąd) ─────┤ ADC1 A0 / PA3                                                           │
-     IMU (SPI)  ─ ─ ─ ─ ─ ┤ do ustalenia                                                            │
-     2× odległość (I2C) ─ ┤ do ustalenia                                                            │
+     ISM330DHCX (IMU) ────┤ SPI3 PC10/PC11/PC12, CS PD2, INT1 PF3 (EXTI)                            │
+     2× VL53L1X (ToF) ────┤ I2C1 PB8/PB9, XSHUT PF15/PD8, GPIO1 PF14/PD9                            │
      silnik PWM + DIR ─ ─ ┤ do ustalenia                                                            │
                           └─────────────────────────────────────────────────────────────────────────┘
                                    ((( 2.4 GHz, kanał 20 )))
@@ -53,10 +53,31 @@ inzynierka/
 | | GND | GND | – | – |
 | | VOUT | A0 | PA3 | ADC1_IN8 (`CUR_A0`), oversampling ×256, DMA |
 | | IP+ / IP− | szeregowo w zasilaniu silnika | – | 1.6 mΩ, ±30 A |
+| ISM330DHCX (Adafruit 4502) | VIN | 3V3 | – | – |
+| | GND | GND | – | – |
+| | SCL (SCK) | D45 | PC10 | SPI3_SCK, 2.5 MHz, mode 3 |
+| | DO (SDO/MISO) | D46 | PC11 | SPI3_MISO |
+| | SDA (SDI/MOSI) | D47 | PC12 | SPI3_MOSI |
+| | CS | D48 | PD2 | GPIO out `IMU_CS`, start 1 |
+| | I1 (INT1) | D49 | PF3 | EXTI3, zbocze narastające (`IMU_INT1`) |
+| VL53L1X lewy | VIN | 3V3 | – | – |
+| | GND | GND | – | – |
+| | SDA | D14 | PB9 | I2C1_SDA, 400 kHz, DMA |
+| | SCL | D15 | PB8 | I2C1_SCL |
+| | XSHUT | D2 | PF15 | GPIO open-drain `TOF_L_XSHUT`, start 0 |
+| | GPIO1 | D4 | PF14 | GPIO in `TOF_L_INT` |
+| VL53L1X prawy | VIN, GND, SDA, SCL | jak lewy (ta sama magistrala) | – | – |
+| | XSHUT | D1 | PD8 | GPIO open-drain `TOF_R_XSHUT`, start 0 |
+| | GPIO1 | D0 | PD9 | GPIO in `TOF_R_INT` |
 | ST-LINK (CN1, USB) | – | USB do laptopa | PG7/PG8 | LPUART1 2 Mbaud (VCP), SWD |
 
 - **Dodatkowo mierzone wejścia ADC:** A1 (PC0) i A2 (PC3) są skonfigurowane w ADC1 i pokazywane w logu diagnostycznym. Służą do sprawdzania okablowania i są wolne do innego użytku.
 - **Stan czujnika prądu:** podłączenie VOUT → A0 to plan. W ostatnim pomiarze A0–A2 pokazywały ~0.4–0.47 V, czyli czujnik nie był wpięty, bo bez prądu powinno być ~1.65 V.
+- **Numery Dxx** to oznaczenia złączy Zio (CN7–CN10), zweryfikowane z mapą wariantu STM32duino dla NUCLEO-L496ZG/L4A6ZG.
+- **IMU na osobnej magistrali (SPI3):** transfery radia na SPI1 nie opóźniają odczytu IMU i odwrotnie. Płytka Adafruit domyślnie startuje w trybie I2C. Pierwszy zapis po SPI ustawia `I2C_disable`, a sam tryb SPI wybiera stan niski na CS.
+- **Dwa VL53L1X mają ten sam adres 0x29.** Przy starcie oba są trzymane w resecie (XSHUT=0). Potem po kolei: zwolnienie XSHUT, zmiana adresu na 0x30 (lewy) i 0x31 (prawy). Adres nie jest pamiętany po wyłączeniu, więc sekwencja idzie przy każdym starcie.
+- **XSHUT i GPIO1 są bez podciągania w MCU.** XSHUT jest open-drain, bo moduły zwykle podciągają go do zasilania czujnika (2.8 V), a open-drain jest bezpieczny w obu przypadkach. GPIO1 też ma zwykle podciąganie na module. Jaka to płytka (Adafruit 3967 czy Pololu 3415), jeszcze nie sprawdzone, bo strona kamami blokuje pobranie.
+- **Zarezerwowane dla silnika:** D6 (PE9, TIM1_CH1) na PWM, D5 (PE11) lub D7 (PF13) na DIR. Na enkoder koła reakcyjnego zostaje wolna para timera, np. TIM3 lub TIM4.
 - **Zajęty pin PG6:** steruje włącznikiem zasilania USB OTG (STMPS2151) i jest wyjściem. Nie podłączać do niego żadnego wyjścia, np. IRQ.
 
 ### Baza: Waveshare RP2040-One
@@ -89,14 +110,19 @@ USB-C do laptopa: ramki binarne przez CDC. GP16 to wbudowana dioda WS2812, nieu�
   - `IPlatform`, czyli komplet urządzeń;
   - `IEstimator`, `IController`.
 - **Platforma** (HW albo SIM) jest wybierana w jednym miejscu, `app_main.cpp`, opcją CMake `BIKE_PLATFORM`.
-  - `HwPlatform`: prawdziwy sprzęt. Czujnik prądu to `Acs37041` na ADC1 (DMA, oversampling, przeliczenie przez VREFINT). IMU i czujniki odległości to na razie `Null*`, zgłaszające brak danych. Silnik to `PwmDirMotor` (PWM + DIR) z atrapą wyjścia PWM.
+  - `HwPlatform`: prawdziwy sprzęt.
+    - IMU: `Ism330dhcx` (opis niżej).
+    - Czujniki odległości: 2× `Vl53l1x`.
+    - Czujnik prądu: `Acs37041` na ADC1 (DMA, oversampling, przeliczenie przez VREFINT).
+    - Silnik: `PwmDirMotor` (PWM + DIR), na razie z atrapą wyjścia PWM.
   - `SimPlatform`: urządzenia zasilane przez symulator na PC po LPUART1. Symulator wysyła `SimSensors`, firmware odpowiada `SimActuators` (lock-step).
 - **Sterowanie:**
-  - `ComplementaryEstimator` liczy przechylenie;
+  - `KalmanRollEstimator` liczy przechylenie (opis niżej), a `ComplementaryEstimator` zostaje jako prostsza alternatywa;
   - `NullController` i `PdController` można przełączać w locie komendą `SetController`, a parametry stroić komendą `SetParam`;
   - nowe prawo sterowania to nowa klasa `IController` dopisana do tablicy w `app_main.cpp`.
 - **Bezpieczeństwo:** `Supervisor` pozwala kręcić silnikiem tylko po komendzie `Arm`. Rozbraja przy:
   - braku IMU;
+  - trwającej kalibracji estymatora;
   - przechyle > 0.6 rad;
   - braku ACK z radia przez 300 ms.
 - **Zasady:**
@@ -107,13 +133,79 @@ USB-C do laptopa: ramki binarne przez CDC. GP16 to wbudowana dioda WS2812, nieu�
   - LPUART1 RX: circular, odczyt licznika DMA w pętli;
   - LPUART1 TX: kolejka i porcje DMA, `send()` nie blokuje;
   - SPI1 (radio): RX i TX na DMA;
+  - SPI3 (IMU): RX i TX na DMA, start z przerwania INT1;
+  - I2C1 (ToF): odczyt wyników i kasowanie przerwania przez HAL DMA, bez blokowania pętli;
   - na RP2040 SPI0 też na DMA.
 - **Harmonogram pętli:**
+  - estymator: każda próbka IMU (6.67 kHz), cała kolejka w każdym obiegu pętli;
+  - korekta z ToF: przy każdej nowej parze pomiarów (50 Hz);
   - sterowanie 500 Hz;
-  - czujniki pomocnicze 50 Hz;
+  - prąd 50 Hz;
   - telemetria radiowa 100 Hz;
   - telemetria po kablu 20 Hz;
   - statystyki co 1 s w logu.
+
+## IMU (`Ism330dhcx`)
+
+- **Konfiguracja:** akcelerometr ±4 g, żyroskop ±1000 dps, oba ODR 6.66 kHz, BDU. INT1 daje impuls 75 µs przy każdej próbce żyroskopu. Tryb impulsowy jest konieczny, bo przy poziomie zatrzaśniętym jeden zgubiony odczyt zatrzymałby przerwania od zbocza.
+- **Odczyt:** jedno przerwanie na próbkę (EXTI3), bez przerwań DMA. Przerwanie:
+  1. kończy poprzedni odczyt: CS w górę, 12 B do kolejki ze znacznikiem czasu (licznik cykli DWT);
+  2. startuje nowy odczyt DMA 13 B od rejestru 0x22 (żyroskop, potem akcelerometr).
+- **Opóźnienie i kolejka:** próbka trafia do pętli z opóźnieniem jednego okresu (150 µs). Kolejka ma 32 próbki (4.8 ms), więc zatrzymanie pętli, np. formatowanie linii logu (130–250 µs, zmierzone), nie gubi danych. Przeliczenie na jednostki SI i osie robi dopiero `read()` w pętli.
+- **Zmierzony koszt CPU:** test bez czujnika z programowym wyzwalaniem EXTI3 co 150 µs (2026-10-18):
+  - ~290–350 cykli na próbkę, czyli ~2.5% CPU przy 6.67 kHz;
+  - 0 przepełnień kolejki i 0 nakładających się odczytów, także w sekundzie z logami.
+- **Wariant tańszy, do sprawdzenia na sprzęcie:** FIFO czujnika z progiem kilku próbek dzieli koszt przez liczbę próbek w paczce, kosztem opóźnienia.
+- **Prędkość SPI:** 2.5 MHz (prescaler /32 w `stm.ioc`). Burst 13 B trwa ~42 µs, czyli mieści się w okresie 150 µs. Na STEMMA linie SCK/MOSI mogą mieć podciąganie 10 kΩ i konwersję poziomów, co spowalnia zbocza; biblioteka Adafruit domyślnie używa 1 MHz. Wyższą prędkość (/16, /8 = 10 MHz) sprawdzić na sprzęcie: w spoczynku |a| ≈ 9.81 m/s² i żyroskop ≈ 0.
+- **Start:** przerwania działają od `init()`. Pierwszy `read()` w pętli wyrzuca zaległości z czasu inicjalizacji ToF i radia (~0.3 s) i zeruje liczniki.
+- **Diagnostyka (log co 1 s):** `IMU ok who samples/s gaps overruns overflows`, gdzie `who` musi być `0x6B`.
+- **Osie:** `Ism330dhcx::Config::axis` mapuje osie czujnika na osie ramy (x do przodu, y w lewo, z w górę), także ze znakiem. Do ustawienia po zamocowaniu płytki.
+
+### Uruchomienie z czujnikami (checklista)
+
+Log z `tools/link_console.py --port <ST-LINK> --baud 2000000`:
+
+| Linia | Oczekiwane | Jeśli nie |
+|---|---|---|
+| `IMU ok=1 who=0x6B` | WHO_AM_I się zgadza | brak `ok`: okablowanie SPI3/CS, zasilanie |
+| `samples/s≈6667 overflows=0` | każda próbka dociera | `samples/s≈0` po starcie: tryb impulsowy INT1 (COUNTER_BDR_REG1 0x0B bit 7, z pamięci karty katalogowej, do potwierdzenia) albo przewód INT1 |
+| `loops/s ... roll=` | w spoczynku stały, ±0.6 rad blokuje uzbrojenie | znak/osie: `Ism330dhcx::Config::axis` |
+| `ToF L ok=1 ... st=9`, sensowne mm | oba czujniki mierzą | `ok=0`: XSHUT/I2C; `bad` rośnie: poza zasięgiem lub zła powierzchnia; `n` rośnie bardzo szybko: odwrotna polaryzacja GPIO1 |
+
+## Czujniki odległości (`Vl53l1x`)
+
+- **Sterownik:** własny, z sekwencją rejestrów z ST ULD. Tablica konfiguracji domyślnej (91 B) jest na licencji BSD-3 ST.
+- **Tryb pracy:** short distance mode (do ~1.3 m, mniej czuły na światło otoczenia), budżet czasu 20 ms, pomiar co 20 ms, czyli 50 Hz na czujnik.
+- **Odczyt:** stan GPIO1 (aktywny wysoki) oznacza gotowy wynik. Wtedy idzie odczyt 17 B od 0x0089 przez DMA, a potem kasowanie przerwania (0x0086), też przez DMA. Obie operacje są asynchroniczne. Magistrala jest zajęta do odebrania wyniku przez właściciela, więc dwa czujniki się nie mieszają. Bez podłączonego GPIO1 (`nullptr`) sterownik co 2 ms sprawdza rejestr statusu.
+- **Poprawny pomiar:** tylko range status 9, czyli „valid”; inne są liczone jako `bad`.
+- **Diagnostyka:** `ToF L ok mm st n bad | R ... | i2c err`.
+
+## Estymacja przechylenia (`KalmanRollEstimator`)
+
+- **Konwencja:** przechył jest prawoskrętny wokół osi x (do przodu), więc dodatni oznacza przechył w prawo, przy osiach y w lewo i z w górę.
+- **Stan filtru:** [przechył, bias żyroskopu].
+- **Predykcja:** żyroskop x przy każdej próbce IMU (6.67 kHz).
+- **Korekty:**
+  - **Akcelerometr:** `atan2(ay, az)` co 8 próbek, z dużą wariancją, bo moment koła reakcyjnego daje boczne przyspieszenie (h·α) w miejscu IMU. Pomijany, gdy |a| odbiega od g o więcej niż 1 m/s².
+  - **ToF:** dwa czujniki patrzą w dół w odległości b od siebie (poprzecznie). Nad płaskim podłożem dL − dR = b·tan(przechył) dokładnie, niezależnie od wysokości. To jest główna bezwzględna referencja i z niej filtr ustala bias żyroskopu.
+- **Parametry:** wariancje, b (`tofBaseline`, domyślnie 0.2 m), bramka i parametry kalibracji są w `KalmanRollEstimator::Config`. Do zestrojenia po zbudowaniu roweru.
+
+### Kalibracja przy starcie
+
+Po starcie (i po komendzie `calibrate`) rower musi stać nieruchomo przez 1.5 s. Pion nie jest potrzebny: może stać na nóżce albo oparty o ścianę, pod dowolnym kątem.
+
+- **Bias żyroskopu:** średnia z żyroskopu. W bezruchu prędkość kątowa jest zerowa niezależnie od kąta.
+- **Kąt początkowy:** kierunek średniego wektora przyspieszenia, `atan2(Σay, Σaz)`.
+- **Przesunięcie ToF:** średni kąt z ToF minus kąt z akcelerometru. Pochłania montaż czujników, różnicę ich wysokości i nachylenie podłogi, więc ToF i akcelerometr nie „ciągną” w różne strony. Wymaga ≥ 20 par pomiarów, inaczej korekta z ToF jest wyłączona do następnej kalibracji.
+- **Wykrywanie ruchu:** jeśli w oknie odchylenie standardowe żyroskopu na którejkolwiek osi przekracza 0.02 rad/s albo |a| odbiega od g o więcej niż 0.5 m/s², kalibracja zaczyna się od nowa (licznik `restarts`).
+- **Blokada:** do końca kalibracji `estimatorReady = false`. `Supervisor` traktuje to jak failsafe i nie pozwala uzbroić. Telemetria ma flagę `READY`, a log co 1 s linię `estimator: ...` z kątem startowym, biasem i przesunięciem ToF.
+- **Kąt startowy jest względem grawitacji,** z dokładnością do krzywizny montażu IMU. Punkt równowagi roweru i tak zależy od położenia środka masy, więc docelowo ma go znajdować sterownik: średni prąd silnika ≠ 0 oznacza złe zero.
+- **Ograniczenie:** przesunięcie ToF z różnicy wysokości czujników dodaje się w dziedzinie tan(kąta), nie kąta, więc lekko zależy od kąta. Przy 8 mm różnicy i zmianie z 12° na −3° daje to ~0.1°.
+- **Test na PC** (`stm/tests/kalman_test.cpp`) sprawdza:
+  - kalibrację przy 5°, −8° i 12°;
+  - restart przy ruchu;
+  - przesunięcie montażu ToF;
+  - wierność kąta przy zaburzonym akcelerometrze.
 
 ## Radio
 
@@ -227,6 +319,12 @@ printf 'config load %s\nproject generate\nexit\n' "$PWD/stm.ioc" > /tmp/gen.txt
 
 Regeneracja nie rusza `App/`, `CMakeLists.txt`, `CMakePresets.json` ani sekcji USER CODE (sprawdzone).
 
+Test filtru Kalmana na PC (bez sprzętu):
+
+```bash
+cd tests && g++ -std=c++17 -O2 -I../App -I../../common/include kalman_test.cpp -o /tmp/kalman_test && /tmp/kalman_test
+```
+
 **Baza (RP2040-One)**, z katalogu `base/`:
 
 ```bash
@@ -246,6 +344,7 @@ cd tools
 ./link_console.py --cmd controller --arg 1         # przełącz sterownik
 ./link_console.py --cmd param --param 0 --arg 2.5  # kp = 2.5
 ./link_console.py --cmd arm                        # uzbrój (odmowa, dopóki failsafe)
+./link_console.py --cmd calibrate                  # rozbrój i skalibruj od nowa (rower nieruchomo)
 ./link_console.py --port /dev/serial/by-id/usb-STMicroelectronics_STM32_STLink_*-if02 --baud 2000000   # po kablu
 ```
 
@@ -263,8 +362,7 @@ Te same komendy działają po kablu.
 
 | Urządzenie | Potrzebna decyzja | Plan |
 |---|---|---|
-| IMU | model i piny | SPI2 lub SPI3 z DMA, osobna magistrala od radia |
-| Czujniki odległości | model i adresy I2C (2 sztuki o tym samym adresie wymagają XSHUT albo dwóch magistral) | I2C z DMA |
+| IMU, czujniki odległości | geometria montażu: osie IMU, rozstaw b czujników ToF, znak | wpisać w `Ism330dhcx::Config::axis` i `KalmanRollEstimator::Config` |
 | Silnik | timer/kanał PWM, pin DIR, częstotliwość PWM | `IPwmOutput` na TIM |
 
 Każde urządzenie to nowa klasa implementująca istniejący interfejs i podmiana `Null*` w `HwPlatform`. Reszta kodu się nie zmienia.

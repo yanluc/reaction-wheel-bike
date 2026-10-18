@@ -28,6 +28,7 @@ enum class CommandId : uint8_t {
     SetController = 4,  // arg = controller index
     SetParam = 5,       // param = index, arg = value * 1000
     SetTestDrops = 6,   // stream test: arg != 0 -> bike drops packets on purpose (FEC demo)
+    Calibrate = 7,      // disarm, restart the estimator calibration (bike must stand still)
 };
 
 enum TelemetryFlags : uint8_t {
@@ -36,6 +37,7 @@ enum TelemetryFlags : uint8_t {
     kFlagRadioLink = 1 << 2,  // bike sees ACKs from the base
     kFlagSimPlatform = 1 << 3,
     kFlagFailsafe = 1 << 4,
+    kFlagEstimatorReady = 1 << 5,  // startup calibration done
 };
 
 #pragma pack(push, 1)

@@ -22,7 +22,7 @@ public:
 
     // Returns true if the motor may run this cycle.
     bool update(const BikeState& s, bool radioLinkUp) {
-        failsafe_ = !s.imuValid || std::fabs(s.roll) > limits_.maxRoll || !radioLinkUp;
+        failsafe_ = !s.imuValid || !s.estimatorReady || std::fabs(s.roll) > limits_.maxRoll || !radioLinkUp;
         if (failsafe_) {
             disarm();
         } else if (armRequested_) {

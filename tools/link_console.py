@@ -15,7 +15,7 @@ import serial
 
 import bikelink as bl
 
-COMMANDS = {"arm": bl.CMD_ARM, "disarm": bl.CMD_DISARM, "ping": bl.CMD_PING}
+COMMANDS = {"arm": bl.CMD_ARM, "disarm": bl.CMD_DISARM, "ping": bl.CMD_PING, "calibrate": bl.CMD_CALIBRATE}
 
 
 def find_base_port():
@@ -25,7 +25,7 @@ def find_base_port():
 
 def flags_str(f):
     names = [("ARMED", bl.FLAG_ARMED), ("IMU", bl.FLAG_IMU_OK), ("LINK", bl.FLAG_RADIO_LINK),
-             ("SIM", bl.FLAG_SIM), ("FAILSAFE", bl.FLAG_FAILSAFE)]
+             ("SIM", bl.FLAG_SIM), ("FAILSAFE", bl.FLAG_FAILSAFE), ("READY", bl.FLAG_EST_READY)]
     return "|".join(n for n, m in names if f & m) or "-"
 
 

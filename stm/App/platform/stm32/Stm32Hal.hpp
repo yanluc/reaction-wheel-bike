@@ -43,10 +43,31 @@ private:
     static constexpr size_t kMaxLen = 64;
     static constexpr size_t kPolledMaxLen = 4;
     SPI_HandleTypeDef* h_;
-    mutable bool active_ = false;
+    mutable volatile bool active_ = false;
     bool configured_ = false;
+    uint32_t ccrRx_ = 0;
+    uint32_t ccrTx_ = 0;
     uint8_t txScratch_[kMaxLen];
     uint8_t rxScratch_[kMaxLen];
+};
+
+// HAL DMA transfers (needs the I2C event/error IRQs); a transfer stuck > kTimeoutMs re-inits the bus.
+class DmaI2c final : public hal::II2c {
+public:
+    explicit DmaI2c(I2C_HandleTypeDef* h) : h_(h) {}
+    bool read(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) override;
+    bool write(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) override;
+    bool startRead(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) override;
+    bool startWrite(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) override;
+    Result result() override;
+    uint32_t errors() const { return errors_; }
+
+private:
+    static constexpr uint32_t kTimeoutMs = 10;
+    I2C_HandleTypeDef* h_;
+    bool taken_ = false;
+    uint32_t startMs_ = 0;
+    uint32_t errors_ = 0;
 };
 
 class DwtClock final : public hal::IClock {

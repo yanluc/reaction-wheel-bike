@@ -27,6 +27,24 @@ protected:
     ~ISpi() = default;
 };
 
+// Devices with 16-bit register addresses (VL53L1X). One asynchronous transfer at a time: the bus
+// stays taken until its owner collects the result, so devices sharing it never see each other's.
+class II2c {
+public:
+    enum class Result : uint8_t { Pending, Ok, Error };
+
+    virtual bool read(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) = 0;
+    virtual bool write(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) = 0;
+
+    // Buffers must stay valid until result() != Pending.
+    virtual bool startRead(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) = 0;
+    virtual bool startWrite(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) = 0;
+    virtual Result result() = 0;
+
+protected:
+    ~II2c() = default;
+};
+
 class IOutputPin {
 public:
     virtual void write(bool high) = 0;

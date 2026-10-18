@@ -68,6 +68,8 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     App/platform/stm32/SerialLink.cpp
     App/platform/stm32/AdcDma.cpp
     App/platform/hw/HwPlatform.cpp
+    App/drivers/Ism330dhcx.cpp
+    App/drivers/Vl53l1x.cpp
     App/platform/sim/SimPlatform.cpp
     ${COMMON_DIR}/src/nrf24/Nrf24.cpp
     ${COMMON_DIR}/src/proto/Frame.cpp

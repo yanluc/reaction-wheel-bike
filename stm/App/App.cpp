@@ -74,6 +74,10 @@ void App::onCommand(const proto::Command& cmd) {
             d_.supervisor.disarm();  // never switch control law while the wheel spins
             selectController(static_cast<uint8_t>(cmd.arg));
             break;
+        case proto::CommandId::Calibrate:
+            d_.supervisor.disarm();
+            d_.estimator.reset();
+            break;
         case proto::CommandId::SetParam:
             controller_->setParam(cmd.param, static_cast<float>(cmd.arg) / 1000.0f);
             break;
@@ -91,16 +95,37 @@ void App::onFrame(const uint8_t* msg, size_t len) {
     onCommand(cmd);
 }
 
-void App::controlStep(float dt) {
+void App::imuStep(uint32_t now) {
     ImuSample imu;
-    if (d_.platform.imu().read(imu)) {
+    while (d_.platform.imu().read(imu)) {
+        float dt = haveImu_ ? static_cast<float>(imu.timeUs - lastImuTimeUs_) * 1e-6f : 0.0f;
+        if (dt > kMaxImuDt) dt = kMaxImuDt;
         d_.estimator.update(imu, dt, state_);
-        state_.imuValid = true;
+        lastImuTimeUs_ = imu.timeUs;
+        lastImuUs_ = now;
+        haveImu_ = true;
         ++imuSamples_;
-    } else {
-        state_.imuValid = false;
     }
+    state_.imuValid = haveImu_ && now - lastImuUs_ < kImuTimeoutUs;
+}
 
+void App::distanceStep() {
+    float v;
+    if (d_.platform.distanceLeft().read(v)) {
+        state_.distLeft = v;
+        newLeft_ = true;
+    }
+    if (d_.platform.distanceRight().read(v)) {
+        state_.distRight = v;
+        newRight_ = true;
+    }
+    if (newLeft_ && newRight_) {
+        newLeft_ = newRight_ = false;
+        d_.estimator.updateDistances(state_.distLeft, state_.distRight, state_);
+    }
+}
+
+void App::controlStep(float dt) {
     IMotor& motor = d_.platform.motor();
     const bool run = d_.supervisor.update(state_, d_.radio.linkUp());
     if (run) {
@@ -113,8 +138,6 @@ void App::controlStep(float dt) {
 
 void App::auxStep() {
     float v;
-    if (d_.platform.distanceLeft().read(v)) state_.distLeft = v;
-    if (d_.platform.distanceRight().read(v)) state_.distRight = v;
     if (d_.platform.current().read(v)) state_.current = v;
 }
 
@@ -127,7 +150,8 @@ proto::Telemetry App::buildTelemetry(uint16_t seq) {
     t.flags = (d_.supervisor.armed() ? proto::kFlagArmed : 0) | (state_.imuValid ? proto::kFlagImuOk : 0) |
               (d_.radio.linkUp() ? proto::kFlagRadioLink : 0) |
               (d_.platform.isSimulation() ? proto::kFlagSimPlatform : 0) |
-              (d_.supervisor.failsafe() ? proto::kFlagFailsafe : 0);
+              (d_.supervisor.failsafe() ? proto::kFlagFailsafe : 0) |
+              (state_.estimatorReady ? proto::kFlagEstimatorReady : 0);
     t.rollMrad = toMilli(state_.roll);
     t.rollRateMradS = toMilli(state_.rollRate);
     t.motorPermille = toMilli(d_.platform.motor().command());
@@ -140,6 +164,35 @@ proto::Telemetry App::buildTelemetry(uint16_t seq) {
     return t;
 }
 
+bool App::logStatsLine(uint8_t line) {
+    if (line == 0) {
+        const RadioStream::Stats& rs = d_.radio.stats();
+        d_.serial.log("radio tlm sent=%lu acked=%lu fail=%lu cmds=%lu link=%d stream=%lu",
+                      static_cast<unsigned long>(rs.telemetrySent), static_cast<unsigned long>(rs.telemetryAcked),
+                      static_cast<unsigned long>(rs.telemetryFailed), static_cast<unsigned long>(rs.commands),
+                      d_.radio.linkUp() ? 1 : 0, static_cast<unsigned long>(rs.dataPackets));
+        return true;
+    }
+    if (line == 1) {
+        d_.serial.log("loops/s=%lu maxgap=%luus imu/s=%lu roll=%dmrad armed=%d failsafe=%d ctrl=%s uart rxerr=%lu drop=%lu",
+                      static_cast<unsigned long>(snap_.loops), static_cast<unsigned long>(snap_.maxLoopGapUs),
+                      static_cast<unsigned long>(snap_.imuSamples), static_cast<int>(state_.roll * 1000.0f),
+                      d_.supervisor.armed() ? 1 : 0, d_.supervisor.failsafe() ? 1 : 0, controller_->name(),
+                      static_cast<unsigned long>(d_.serial.rxErrors()), static_cast<unsigned long>(d_.serial.droppedTx()));
+        return true;
+    }
+    char diag[proto::kMaxFramePayload - 1];
+    if (line == 2) {
+        if (d_.estimator.status(diag, sizeof(diag)) > 0) d_.serial.log("%s", diag);
+        return true;
+    }
+    if (d_.platform.diagnostics(static_cast<uint8_t>(line - 3), diag, sizeof(diag)) <= 0) {
+        return false;
+    }
+    d_.serial.log("%s", diag);
+    return true;
+}
+
 void App::run() {
     const AppTiming timing;
     uint32_t now = d_.clock.micros();
@@ -149,15 +202,20 @@ void App::run() {
     Periodic serialTlm{timing.serialTelemetryPeriodUs, now};
     Periodic stats{timing.statsPeriodUs, now + timing.statsPeriodUs};
     uint32_t lastControlUs = now;
+    uint32_t lastLoopUs = now;
     uint32_t blink = 0;
 
     while (true) {
         now = d_.clock.micros();
         ++loops_;
+        if (now - lastLoopUs > maxLoopGapUs_) maxLoopGapUs_ = now - lastLoopUs;
+        lastLoopUs = now;
 
         d_.serial.poll();
         d_.platform.poll();
         d_.radio.poll();
+        imuStep(now);
+        distanceStep();
 
         if (control.due(now)) {
             controlStep(static_cast<float>(now - lastControlUs) * 1e-6f);
@@ -183,22 +241,18 @@ void App::run() {
             d_.ledArmed.write(d_.supervisor.armed() || (d_.supervisor.failsafe() && (blink & 4)));
         }
         if (stats.due(now)) {
-            const RadioStream::Stats& rs = d_.radio.stats();
-            d_.serial.log("radio tlm sent=%lu acked=%lu fail=%lu cmds=%lu link=%d stream=%lu",
-                          static_cast<unsigned long>(rs.telemetrySent), static_cast<unsigned long>(rs.telemetryAcked),
-                          static_cast<unsigned long>(rs.telemetryFailed), static_cast<unsigned long>(rs.commands),
-                          d_.radio.linkUp() ? 1 : 0, static_cast<unsigned long>(rs.dataPackets));
-            d_.serial.log("loops/s=%lu imu/s=%lu armed=%d failsafe=%d ctrl=%s uart rxerr=%lu drop=%lu",
-                          static_cast<unsigned long>(loops_), static_cast<unsigned long>(imuSamples_),
-                          d_.supervisor.armed() ? 1 : 0, d_.supervisor.failsafe() ? 1 : 0, controller_->name(),
-                          static_cast<unsigned long>(d_.serial.rxErrors()),
-                          static_cast<unsigned long>(d_.serial.droppedTx()));
-            char diag[96];
-            if (d_.platform.diagnostics(diag, sizeof(diag)) > 0) {
-                d_.serial.log("%s", diag);
-            }
+            snap_ = {loops_, maxLoopGapUs_, imuSamples_};
             loops_ = 0;
+            maxLoopGapUs_ = 0;
             imuSamples_ = 0;
+            statsLine_ = 1;
+        } else if (statsLine_ != 0) {
+            // One line per iteration: a whole report at once stalls the loop for ~1 ms.
+            if (!logStatsLine(statsLine_ - 1)) {
+                statsLine_ = 0;
+            } else {
+                ++statsLine_;
+            }
         }
     }
 }

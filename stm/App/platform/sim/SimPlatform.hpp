@@ -26,7 +26,9 @@ public:
     bool init() override { return true; }
     bool read(float& meters) override {
         meters = value_;
-        return valid_;
+        const bool fresh = valid_;
+        valid_ = false;
+        return fresh;
     }
 
 private:

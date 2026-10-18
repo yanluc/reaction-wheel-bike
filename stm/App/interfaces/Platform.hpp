@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 #include "interfaces/Devices.hpp"
 
 namespace bike {
@@ -17,8 +19,8 @@ public:
     virtual ICurrentSensor& current() = 0;
     virtual IMotor& motor() = 0;
 
-    // Logged once per second; returns chars written.
-    virtual int diagnostics(char* out, int size) { (void)out; (void)size; return 0; }
+    // Logged once per second, lines 0, 1, ... until one returns 0.
+    virtual int diagnostics(uint8_t line, char* out, int size) { (void)line; (void)out; (void)size; return 0; }
 
 protected:
     ~IPlatform() = default;

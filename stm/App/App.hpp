@@ -44,10 +44,16 @@ public:
     void onFrame(const uint8_t* msg, size_t len) override;
 
 private:
+    static constexpr uint32_t kImuTimeoutUs = 20000;
+    static constexpr float kMaxImuDt = 0.01f;
+
+    void imuStep(uint32_t now);
+    void distanceStep();
     void controlStep(float dt);
     void auxStep();
     proto::Telemetry buildTelemetry(uint16_t seq);  // seq per link: per-link loss stats
     void selectController(uint8_t index);
+    bool logStatsLine(uint8_t line);
 
     Deps d_;
     BikeState state_;
@@ -58,7 +64,19 @@ private:
     uint16_t lastCmdId_ = 0;
     uint32_t lastCmdStamp_ = 0;
     uint32_t imuSamples_ = 0;
+    uint32_t lastImuTimeUs_ = 0;
+    uint32_t lastImuUs_ = 0;
+    bool haveImu_ = false;
+    bool newLeft_ = false;
+    bool newRight_ = false;
     uint32_t loops_ = 0;
+    uint32_t maxLoopGapUs_ = 0;
+    struct {
+        uint32_t loops;
+        uint32_t maxLoopGapUs;
+        uint32_t imuSamples;
+    } snap_{};
+    uint8_t statsLine_ = 0;
 };
 
 }  // namespace bike

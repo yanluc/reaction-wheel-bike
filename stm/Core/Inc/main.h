@@ -59,6 +59,9 @@ void Error_Handler(void);
 /* Private defines -----------------------------------------------------------*/
 #define B1_Pin GPIO_PIN_13
 #define B1_GPIO_Port GPIOC
+#define IMU_INT1_Pin GPIO_PIN_3
+#define IMU_INT1_GPIO_Port GPIOF
+#define IMU_INT1_EXTI_IRQn EXTI3_IRQn
 #define CUR_A1_Pin GPIO_PIN_0
 #define CUR_A1_GPIO_Port GPIOC
 #define CUR_A2_Pin GPIO_PIN_3
@@ -67,8 +70,16 @@ void Error_Handler(void);
 #define CUR_A0_GPIO_Port GPIOA
 #define NRF_IRQ_Pin GPIO_PIN_12
 #define NRF_IRQ_GPIO_Port GPIOF
+#define TOF_L_INT_Pin GPIO_PIN_14
+#define TOF_L_INT_GPIO_Port GPIOF
+#define TOF_L_XSHUT_Pin GPIO_PIN_15
+#define TOF_L_XSHUT_GPIO_Port GPIOF
 #define LD3_Pin GPIO_PIN_14
 #define LD3_GPIO_Port GPIOB
+#define TOF_R_XSHUT_Pin GPIO_PIN_8
+#define TOF_R_XSHUT_GPIO_Port GPIOD
+#define TOF_R_INT_Pin GPIO_PIN_9
+#define TOF_R_INT_GPIO_Port GPIOD
 #define NRF_CSN_Pin GPIO_PIN_14
 #define NRF_CSN_GPIO_Port GPIOD
 #define NRF_CE_Pin GPIO_PIN_15
@@ -95,6 +106,8 @@ void Error_Handler(void);
 #define TMS_GPIO_Port GPIOA
 #define TCK_Pin GPIO_PIN_14
 #define TCK_GPIO_Port GPIOA
+#define IMU_CS_Pin GPIO_PIN_2
+#define IMU_CS_GPIO_Port GPIOD
 #define SWO_Pin GPIO_PIN_3
 #define SWO_GPIO_Port GPIOB
 #define LD2_Pin GPIO_PIN_7

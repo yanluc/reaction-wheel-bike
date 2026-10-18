@@ -23,7 +23,7 @@ protected:
 class IDistanceSensor {
 public:
     virtual bool init() = 0;
-    virtual bool read(float& meters) = 0;
+    virtual bool read(float& meters) = 0;  // true once per new valid measurement
 
 protected:
     ~IDistanceSensor() = default;

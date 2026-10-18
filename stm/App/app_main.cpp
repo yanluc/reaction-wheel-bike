@@ -14,6 +14,8 @@
 
 extern "C" {
 extern SPI_HandleTypeDef hspi1;
+extern SPI_HandleTypeDef hspi3;
+extern I2C_HandleTypeDef hi2c1;
 extern UART_HandleTypeDef hlpuart1;
 extern ADC_HandleTypeDef hadc1;
 }
@@ -35,12 +37,21 @@ stm32::SerialLink serial(&hlpuart1);
 SimPlatform platform(serial);
 #else
 stm32::AdcDma adc(&hadc1);
-HwPlatform platform(adc);
+stm32::DmaSpi imuSpi(&hspi3);
+stm32::Pin imuCs(IMU_CS_GPIO_Port, IMU_CS_Pin);
+stm32::DmaI2c i2c(&hi2c1);
+stm32::Pin tofLeftXshut(TOF_L_XSHUT_GPIO_Port, TOF_L_XSHUT_Pin);
+stm32::InputPin tofLeftGpio1(TOF_L_INT_GPIO_Port, TOF_L_INT_Pin);
+stm32::Pin tofRightXshut(TOF_R_XSHUT_GPIO_Port, TOF_R_XSHUT_Pin);
+stm32::InputPin tofRightGpio1(TOF_R_INT_GPIO_Port, TOF_R_INT_Pin);
+HwPlatform platform(HwPlatform::Deps{clock, adc, imuSpi, imuCs, i2c, tofLeftXshut, &tofLeftGpio1,
+                                     tofRightXshut, &tofRightGpio1},
+                    Ism330dhcx::Config{});
 #endif
 
 nrf24::Nrf24 radio(radioSpi, radioCe, radioCsn, clock, &radioIrq);
 
-ComplementaryEstimator estimator(0.98f);
+KalmanRollEstimator estimator(KalmanRollEstimator::Config{});
 NullController nullController;
 PdController pdController(2.0f, 0.2f);
 IController* const controllers[] = {&nullController, &pdController};
@@ -48,6 +59,14 @@ IController* const controllers[] = {&nullController, &pdController};
 Supervisor supervisor(Supervisor::Limits{});
 
 }  // namespace
+
+void app_imu_data_ready_irq(uint32_t stamp) {
+#if BIKE_PLATFORM_SIM
+    (void)stamp;
+#else
+    platform.imuDriver().onDataReady(stamp);
+#endif
+}
 
 void app_main(void) {
     clock.init();
