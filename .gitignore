@@ -1,0 +1,15 @@
+# Build outputs (CMake presets, Pico SDK)
+build/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE / tool state (not part of the project)
+.project
+.cproject
+.settings/
+*.launch
+.vscode/
+.idea/
+MXTmpFiles/

@@ -1,0 +1,99 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "default",
+            "hidden": true,
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/gcc-arm-none-eabi.cmake",
+            "cacheVariables": {}
+        },
+        {
+            "name": "Debug",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug"
+            }
+        },
+        {
+            "name": "Release",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release"
+            }
+        },
+        {
+            "name": "Debug-Sim",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "BIKE_PLATFORM": "SIM"
+            }
+        },
+        {
+            "name": "Release-Sim",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BIKE_PLATFORM": "SIM"
+            }
+        },
+        {
+            "name": "Release-Bench",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BIKE_RADIO_BENCH": "ON"
+            }
+        },
+        {
+            "name": "Release-StreamTest",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BIKE_STREAM_TEST": "ON"
+            }
+        },
+        {
+            "name": "Release-StreamTestAck",
+            "inherits": "default",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Release",
+                "BIKE_STREAM_TEST": "ON",
+                "BIKE_STREAM_ACK": "ON",
+                "BIKE_STREAM_RATE_HZ": "6700"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "Debug",
+            "configurePreset": "Debug"
+        },
+        {
+            "name": "Release",
+            "configurePreset": "Release"
+        },
+        {
+            "name": "Debug-Sim",
+            "configurePreset": "Debug-Sim"
+        },
+        {
+            "name": "Release-Sim",
+            "configurePreset": "Release-Sim"
+        },
+        {
+            "name": "Release-Bench",
+            "configurePreset": "Release-Bench"
+        },
+        {
+            "name": "Release-StreamTest",
+            "configurePreset": "Release-StreamTest"
+        },
+        {
+            "name": "Release-StreamTestAck",
+            "configurePreset": "Release-StreamTestAck"
+        }
+    ]
+}
