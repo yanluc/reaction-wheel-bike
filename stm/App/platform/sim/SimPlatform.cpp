@@ -32,8 +32,10 @@ void SimPlatform::onFrame(const uint8_t* msg, size_t len) {
     imu_.sample_.timeUs = s.timeUs;
     imu_.fresh_ = true;
     distLeft_.value_ = s.distLeftM;
+    distLeft_.timeUs_ = s.timeUs;
     distLeft_.valid_ = true;
     distRight_.value_ = s.distRightM;
+    distRight_.timeUs_ = s.timeUs;
     distRight_.valid_ = true;
     current_.value_ = s.currentA;
     current_.valid_ = true;

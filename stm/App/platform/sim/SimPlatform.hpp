@@ -24,8 +24,9 @@ private:
 class SimDistanceSensor final : public IDistanceSensor {
 public:
     bool init() override { return true; }
-    bool read(float& meters) override {
+    bool read(float& meters, uint32_t& timeUs) override {
         meters = value_;
+        timeUs = timeUs_;
         const bool fresh = valid_;
         valid_ = false;
         return fresh;
@@ -34,6 +35,7 @@ public:
 private:
     friend class SimPlatform;
     float value_ = 0.0f;
+    uint32_t timeUs_ = 0;
     bool valid_ = false;
 };
 

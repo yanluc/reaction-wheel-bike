@@ -75,6 +75,8 @@ public:
     void init();
     uint32_t millis() override { return HAL_GetTick(); }
     uint32_t micros() override;
+    uint32_t ticks() override { return DWT->CYCCNT; }
+    uint32_t ticksPerUs() const override { return cyclesPerUs_; }
     void delayUs(uint32_t us) override;
 
 private:

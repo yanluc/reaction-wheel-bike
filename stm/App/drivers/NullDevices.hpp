@@ -15,7 +15,7 @@ public:
 class NullDistanceSensor final : public IDistanceSensor {
 public:
     bool init() override { return false; }
-    bool read(float&) override { return false; }
+    bool read(float&, uint32_t&) override { return false; }
 };
 
 class NullCurrentSensor final : public ICurrentSensor {

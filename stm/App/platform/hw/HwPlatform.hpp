@@ -18,6 +18,8 @@ public:
     static constexpr stm32::AdcDma::Channel kCurrentChannel = stm32::AdcDma::kA0;
     static constexpr uint8_t kTofLeftAddress = 0x30;
     static constexpr uint8_t kTofRightAddress = 0x31;
+    // Both ToF sensors are triggered together (one-shot) so a left/right pair describes one moment.
+    static constexpr uint32_t kTofPeriodUs = 25000;  // 20 ms timing budget + read-out
 
     struct Deps {
         hal::IClock& clock;
@@ -43,10 +45,7 @@ public:
     const char* name() const override { return "HW"; }
     bool isSimulation() const override { return false; }
     bool init() override;
-    void poll() override {
-        distLeft_.poll();
-        distRight_.poll();
-    }
+    void poll() override;
 
     IImu& imu() override { return imu_; }
     Ism330dhcx& imuDriver() { return imu_; }
@@ -67,6 +66,9 @@ private:
     NullPin dir_;
     PwmDirMotor motor_;
     uint32_t lastImuSamples_ = 0;
+    uint32_t lastTofTriggerUs_ = 0;
+    bool triggerLeft_ = false;
+    bool triggerRight_ = false;
 };
 
 }  // namespace bike

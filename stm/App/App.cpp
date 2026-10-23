@@ -111,15 +111,24 @@ void App::imuStep(uint32_t now) {
 
 void App::distanceStep() {
     float v;
-    if (d_.platform.distanceLeft().read(v)) {
+    if (d_.platform.distanceLeft().read(v, leftUs_)) {
         state_.distLeft = v;
         newLeft_ = true;
     }
-    if (d_.platform.distanceRight().read(v)) {
+    if (d_.platform.distanceRight().read(v, rightUs_)) {
         state_.distRight = v;
         newRight_ = true;
     }
-    if (newLeft_ && newRight_) {
+    if (!newLeft_ || !newRight_) {
+        return;
+    }
+    // Only a pair measured at the same moment gives the roll; otherwise keep the newer one and wait.
+    const int32_t skew = static_cast<int32_t>(leftUs_ - rightUs_);
+    if (skew > static_cast<int32_t>(kMaxTofSkewUs)) {
+        newRight_ = false;
+    } else if (-skew > static_cast<int32_t>(kMaxTofSkewUs)) {
+        newLeft_ = false;
+    } else {
         newLeft_ = newRight_ = false;
         d_.estimator.updateDistances(state_.distLeft, state_.distRight, state_);
     }

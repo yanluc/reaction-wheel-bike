@@ -138,7 +138,7 @@ USB-C do laptopa: ramki binarne przez CDC. GP16 to wbudowana dioda WS2812, nieu�
   - na RP2040 SPI0 też na DMA.
 - **Harmonogram pętli:**
   - estymator: każda próbka IMU (6.67 kHz), cała kolejka w każdym obiegu pętli;
-  - korekta z ToF: przy każdej nowej parze pomiarów (50 Hz);
+  - korekta z ToF: przy każdej nowej parze pomiarów (40 Hz);
   - sterowanie 500 Hz;
   - prąd 50 Hz;
   - telemetria radiowa 100 Hz;
@@ -170,15 +170,21 @@ Log z `tools/link_console.py --port <ST-LINK> --baud 2000000`:
 | `IMU ok=1 who=0x6B` | WHO_AM_I się zgadza | brak `ok`: okablowanie SPI3/CS, zasilanie |
 | `samples/s≈6667 overflows=0` | każda próbka dociera | `samples/s≈0` po starcie: tryb impulsowy INT1 (COUNTER_BDR_REG1 0x0B bit 7, z pamięci karty katalogowej, do potwierdzenia) albo przewód INT1 |
 | `loops/s ... roll=` | w spoczynku stały, ±0.6 rad blokuje uzbrojenie | znak/osie: `Ism330dhcx::Config::axis` |
-| `ToF L ok=1 ... st=9`, sensowne mm | oba czujniki mierzą | `ok=0`: XSHUT/I2C; `bad` rośnie: poza zasięgiem lub zła powierzchnia; `n` rośnie bardzo szybko: odwrotna polaryzacja GPIO1 |
+| `ToF L ok=1 ... st=9`, sensowne mm | oba czujniki mierzą | `ok=0`: XSHUT/I2C; `bad` rośnie: poza zasięgiem lub zła powierzchnia; `tmo` rośnie: brak sygnału GPIO1 (przewód) |
 
 ## Czujniki odległości (`Vl53l1x`)
 
 - **Sterownik:** własny, z sekwencją rejestrów z ST ULD. Tablica konfiguracji domyślnej (91 B) jest na licencji BSD-3 ST.
-- **Tryb pracy:** short distance mode (do ~1.3 m, mniej czuły na światło otoczenia), budżet czasu 20 ms, pomiar co 20 ms, czyli 50 Hz na czujnik.
+- **Tryb pracy:** short distance mode (do ~1.3 m, mniej czuły na światło otoczenia), budżet czasu 20 ms.
+- **Synchroniczne pomiary (one-shot):** czujniki nie mierzą same w swoim rytmie. `HwPlatform` co 25 ms (40 Hz) wyzwala oba jednym zapisem `SYSTEM__MODE_START = 0x10`, jeden zaraz po drugim (~0.1 ms różnicy). Dzięki temu para lewy/prawy opisuje tę samą chwilę.
+  - W trybie ciągłym każdy czujnik mierzyłby według własnego zegara, z fazą zależną od chwili startu (różnica do 20 ms), a fazy z czasem by się rozjeżdżały.
+  - Każdy pomiar ma znacznik czasu: start + połowa budżetu (środek okna), w tej samej skali co `clock.micros()` i znaczniki IMU.
+  - `App` łączy w parę tylko pomiary różniące się o ≤ 5 ms. W przeciwnym razie odrzuca starszy.
+  - Na przyszłość: znaczniki czasu pozwolą skompensować opóźnienie pomiaru w filtrze (~10–20 ms).
+  - Brak wyniku po 3 budżetach to timeout (`tmo` w logu), po którym czujnik wraca do bezczynności.
 - **Odczyt:** stan GPIO1 (aktywny wysoki) oznacza gotowy wynik. Wtedy idzie odczyt 17 B od 0x0089 przez DMA, a potem kasowanie przerwania (0x0086), też przez DMA. Obie operacje są asynchroniczne. Magistrala jest zajęta do odebrania wyniku przez właściciela, więc dwa czujniki się nie mieszają. Bez podłączonego GPIO1 (`nullptr`) sterownik co 2 ms sprawdza rejestr statusu.
 - **Poprawny pomiar:** tylko range status 9, czyli „valid”; inne są liczone jako `bad`.
-- **Diagnostyka:** `ToF L ok mm st n bad | R ... | i2c err`.
+- **Diagnostyka:** `ToF L ok mm st n bad | R ... | i2c err tmo`. Przy poprawnej pracy `n` rośnie o ~40/s na czujnik.
 
 ## Estymacja przechylenia (`KalmanRollEstimator`)
 

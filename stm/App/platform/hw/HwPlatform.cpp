@@ -17,6 +17,21 @@ bool HwPlatform::init() {
     return motor_.init() && adcOk && imuOk && leftOk && rightOk;
 }
 
+void HwPlatform::poll() {
+    distLeft_.poll();
+    distRight_.poll();
+    const uint32_t now = d_.clock.micros();
+    if (!triggerLeft_ && !triggerRight_ && now - lastTofTriggerUs_ >= kTofPeriodUs && distLeft_.idle() &&
+        distRight_.idle()) {
+        lastTofTriggerUs_ = now;
+        triggerLeft_ = distLeft_.ok();
+        triggerRight_ = distRight_.ok();
+    }
+    // Back to back: the second start follows the first by one short I2C write (~0.1 ms).
+    if (triggerLeft_ && distLeft_.trigger()) triggerLeft_ = false;
+    if (triggerRight_ && distRight_.trigger()) triggerRight_ = false;
+}
+
 int HwPlatform::diagnostics(uint8_t line, char* out, int size) {
     using A = stm32::AdcDma;
     switch (line) {
@@ -31,12 +46,13 @@ int HwPlatform::diagnostics(uint8_t line, char* out, int size) {
         }
         case 1:
             return std::snprintf(
-                out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu",
+                out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu tmo=%lu",
                 distLeft_.ok() ? 1 : 0, distLeft_.lastMm(), distLeft_.lastStatus(),
                 static_cast<unsigned long>(distLeft_.measurements()), static_cast<unsigned long>(distLeft_.invalid()),
                 distRight_.ok() ? 1 : 0, distRight_.lastMm(), distRight_.lastStatus(),
                 static_cast<unsigned long>(distRight_.measurements()), static_cast<unsigned long>(distRight_.invalid()),
-                static_cast<unsigned long>(d_.i2c.errors()));
+                static_cast<unsigned long>(d_.i2c.errors()),
+                static_cast<unsigned long>(distLeft_.timeouts() + distRight_.timeouts()));
         case 2: {
             if (!d_.adc.running()) {
                 return std::snprintf(out, size, "ADC not running");

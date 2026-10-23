@@ -142,10 +142,13 @@ HAL_RAM_FUNC bool Ism330dhcx::read(ImuSample& out) {
     std::atomic_signal_fence(std::memory_order_release);
     tail_ = (tail + 1) % kQueueSize;
 
-    if (samples_ != 0) {
+    const uint32_t tpu = clock_.ticksPerUs();
+    if (samples_ == 0) {
+        timeUs_ = clock_.micros() - (clock_.ticks() - stamp) / tpu;  // same time base as clock.micros()
+    } else {
         stampRemainder_ += stamp - lastStamp_;
-        const uint32_t us = stampRemainder_ / cfg_.stampTicksPerUs;
-        stampRemainder_ -= us * cfg_.stampTicksPerUs;
+        const uint32_t us = stampRemainder_ / tpu;
+        stampRemainder_ -= us * tpu;
         if (us > kPeriodUs * 3 / 2) {
             ++gaps_;
         }

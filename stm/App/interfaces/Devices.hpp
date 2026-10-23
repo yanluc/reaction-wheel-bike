@@ -23,7 +23,8 @@ protected:
 class IDistanceSensor {
 public:
     virtual bool init() = 0;
-    virtual bool read(float& meters) = 0;  // true once per new valid measurement
+    // True once per new valid measurement; timeUs = when it was taken (clock.micros() base).
+    virtual bool read(float& meters, uint32_t& timeUs) = 0;
 
 protected:
     ~IDistanceSensor() = default;

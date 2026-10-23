@@ -20,7 +20,6 @@ public:
         GyroRange gyro = GyroRange::Dps1000;
         // Body axis i (x forward, y left, z up) = sign * sensor axis |axis[i]| (1..3).
         int8_t axis[3] = {1, 2, 3};
-        uint32_t stampTicksPerUs = 80;  // onDataReady() stamp rate (DWT cycles at 80 MHz)
     };
 
     Ism330dhcx(hal::ISpi& spi, hal::IOutputPin& cs, hal::IClock& clock, const Config& cfg)
@@ -29,7 +28,7 @@ public:
     bool init() override;
     bool read(ImuSample& out) override;
 
-    void onDataReady(uint32_t stamp);  // IRQ context
+    void onDataReady(uint32_t stamp);  // IRQ context, stamp = clock.ticks()
 
     bool ok() const { return ok_; }
     uint8_t whoAmI() const { return whoAmI_; }

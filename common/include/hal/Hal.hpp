@@ -66,6 +66,9 @@ public:
     virtual uint32_t millis() = 0;
     virtual uint32_t micros() = 0;
     virtual void delayUs(uint32_t us) = 0;
+    // Fast free-running counter (cheap in IRQs): tick differences / ticksPerUs() = microsecond differences.
+    virtual uint32_t ticks() { return micros(); }
+    virtual uint32_t ticksPerUs() const { return 1; }
 
 protected:
     ~IClock() = default;

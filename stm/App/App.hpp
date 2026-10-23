@@ -46,6 +46,7 @@ public:
 private:
     static constexpr uint32_t kImuTimeoutUs = 20000;
     static constexpr float kMaxImuDt = 0.01f;
+    static constexpr uint32_t kMaxTofSkewUs = 5000;
 
     void imuStep(uint32_t now);
     void distanceStep();
@@ -69,6 +70,8 @@ private:
     bool haveImu_ = false;
     bool newLeft_ = false;
     bool newRight_ = false;
+    uint32_t leftUs_ = 0;
+    uint32_t rightUs_ = 0;
     uint32_t loops_ = 0;
     uint32_t maxLoopGapUs_ = 0;
     struct {

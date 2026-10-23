@@ -13,13 +13,11 @@ constexpr uint16_t kVcselPeriodA = 0x0060;
 constexpr uint16_t kTimeoutB = 0x0061;
 constexpr uint16_t kVcselPeriodB = 0x0063;
 constexpr uint16_t kValidPhaseHigh = 0x0069;
-constexpr uint16_t kIntermeasurement = 0x006C;
 constexpr uint16_t kWoiSd0 = 0x0078;
 constexpr uint16_t kInitialPhaseSd0 = 0x007A;
 constexpr uint16_t kInterruptClear = 0x0086;
 constexpr uint16_t kModeStart = 0x0087;
 constexpr uint16_t kResultBlock = 0x0089;
-constexpr uint16_t kOscCalibrate = 0x00DE;
 constexpr uint16_t kSystemStatus = 0x00E5;
 constexpr uint16_t kModelId = 0x010F;
 constexpr uint16_t kConfigStart = 0x002D;
@@ -55,12 +53,6 @@ bool Vl53l1x::wrByte(uint16_t reg, uint8_t v) { return bus_.write(addr_, reg, &v
 bool Vl53l1x::wrWord(uint16_t reg, uint16_t v) {
     const uint8_t b[2] = {static_cast<uint8_t>(v >> 8), static_cast<uint8_t>(v)};
     return bus_.write(addr_, reg, b, 2);
-}
-
-bool Vl53l1x::wrDword(uint16_t reg, uint32_t v) {
-    const uint8_t b[4] = {static_cast<uint8_t>(v >> 24), static_cast<uint8_t>(v >> 16), static_cast<uint8_t>(v >> 8),
-                          static_cast<uint8_t>(v)};
-    return bus_.write(addr_, reg, b, 4);
 }
 
 bool Vl53l1x::rdByte(uint16_t reg, uint8_t& v) { return bus_.read(addr_, reg, &v, 1); }
@@ -127,13 +119,7 @@ bool Vl53l1x::init() {
     wrWord(kTimeoutA, tb->a);
     wrWord(kTimeoutB, tb->b);
 
-    const uint16_t interval = cfg_.intervalMs < cfg_.timingBudgetMs ? cfg_.timingBudgetMs : cfg_.intervalMs;
-    uint16_t pll = 0;
-    if (!rdWord(kOscCalibrate, pll)) return false;
-    wrDword(kIntermeasurement, static_cast<uint32_t>((pll & 0x3FF) * interval * 1.075f));
-
     wrByte(kInterruptClear, 0x01);
-    if (!wrByte(kModeStart, 0x40)) return false;
     ok_ = true;
     return true;
 }
@@ -143,10 +129,19 @@ void Vl53l1x::finishResult() {
     ++measurements_;
     if (lastStatus_ == kStatusValid) {
         lastMm_ = static_cast<uint16_t>((result_[13] << 8) | result_[14]);
+        lastTimeUs_ = startUs_ + timingBudgetUs() / 2;  // middle of the integration window
         fresh_ = true;
     } else {
         ++invalid_;
     }
+}
+
+bool Vl53l1x::trigger() {
+    if (!ok_ || state_ != State::Idle || !bus_.startWrite(addr_, kModeStart, &oneShot_, 1)) {
+        return false;
+    }
+    state_ = State::Triggering;
+    return true;
 }
 
 void Vl53l1x::poll() {
@@ -156,7 +151,24 @@ void Vl53l1x::poll() {
     hal::II2c::Result r;
     switch (state_) {
         case State::Idle:
-            if (gpio1_ != nullptr) {
+            break;
+        case State::Triggering:
+            r = bus_.result();
+            if (r == hal::II2c::Result::Pending) break;
+            if (r == hal::II2c::Result::Error) {
+                ++busErrors_;
+                state_ = State::Idle;
+                break;
+            }
+            startUs_ = clock_.micros();
+            lastPollMs_ = clock_.millis();
+            state_ = State::Measuring;
+            break;
+        case State::Measuring:
+            if (clock_.micros() - startUs_ > 3 * timingBudgetUs()) {
+                ++timeouts_;
+                state_ = State::Idle;
+            } else if (gpio1_ != nullptr) {
                 if (gpio1_->read() && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
                     state_ = State::ReadResult;
                 }
@@ -169,7 +181,7 @@ void Vl53l1x::poll() {
         case State::CheckStatus:
             r = bus_.result();
             if (r == hal::II2c::Result::Pending) break;
-            state_ = State::Idle;
+            state_ = State::Measuring;
             if (r == hal::II2c::Result::Error) {
                 ++busErrors_;
             } else if (dataReady(status_) && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
@@ -179,15 +191,13 @@ void Vl53l1x::poll() {
         case State::ReadResult:
             r = bus_.result();
             if (r == hal::II2c::Result::Pending) break;
-            state_ = State::Idle;
             if (r == hal::II2c::Result::Error) {
                 ++busErrors_;
+                state_ = State::Measuring;  // retried until the timeout
                 break;
             }
             finishResult();
-            if (bus_.startWrite(addr_, kInterruptClear, &clear_, 1)) {
-                state_ = State::ClearIrq;
-            }
+            state_ = bus_.startWrite(addr_, kInterruptClear, &clear_, 1) ? State::ClearIrq : State::Idle;
             break;
         case State::ClearIrq:
             r = bus_.result();
@@ -198,11 +208,12 @@ void Vl53l1x::poll() {
     }
 }
 
-bool Vl53l1x::read(float& meters) {
+bool Vl53l1x::read(float& meters, uint32_t& timeUs) {
     if (!fresh_) {
         return false;
     }
     meters = static_cast<float>(lastMm_) * 1e-3f;
+    timeUs = lastTimeUs_;
     fresh_ = false;
     return true;
 }
