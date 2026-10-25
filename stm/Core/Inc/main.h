@@ -72,12 +72,8 @@ void Error_Handler(void);
 #define NRF_IRQ_GPIO_Port GPIOF
 #define TOF_L_INT_Pin GPIO_PIN_14
 #define TOF_L_INT_GPIO_Port GPIOF
-#define TOF_L_XSHUT_Pin GPIO_PIN_15
-#define TOF_L_XSHUT_GPIO_Port GPIOF
 #define LD3_Pin GPIO_PIN_14
 #define LD3_GPIO_Port GPIOB
-#define TOF_R_XSHUT_Pin GPIO_PIN_8
-#define TOF_R_XSHUT_GPIO_Port GPIOD
 #define TOF_R_INT_Pin GPIO_PIN_9
 #define TOF_R_INT_GPIO_Port GPIOD
 #define NRF_CSN_Pin GPIO_PIN_14
