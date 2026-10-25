@@ -46,12 +46,13 @@ int HwPlatform::diagnostics(uint8_t line, char* out, int size) {
         }
         case 1:
             return std::snprintf(
-                out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu tmo=%lu",
+                out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu bus=%lu tmo=%lu",
                 distLeft_.ok() ? 1 : 0, distLeft_.lastMm(), distLeft_.lastStatus(),
                 static_cast<unsigned long>(distLeft_.measurements()), static_cast<unsigned long>(distLeft_.invalid()),
                 distRight_.ok() ? 1 : 0, distRight_.lastMm(), distRight_.lastStatus(),
                 static_cast<unsigned long>(distRight_.measurements()), static_cast<unsigned long>(distRight_.invalid()),
                 static_cast<unsigned long>(d_.i2c.errors()),
+                static_cast<unsigned long>(distLeft_.busErrors() + distRight_.busErrors()),
                 static_cast<unsigned long>(distLeft_.timeouts() + distRight_.timeouts()));
         case 2: {
             if (!d_.adc.running()) {

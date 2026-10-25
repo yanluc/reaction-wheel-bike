@@ -49,6 +49,7 @@ private:
     bool waitDataReady(uint32_t timeoutMs);
     bool dataReady(uint8_t tioStatus) const { return (tioStatus & 1) == 1; }  // polarity: active high
     void finishResult();
+    hal::II2c::Result busResult();  // bus_.result(), counting errors
 
     hal::II2c& bus_;
     hal::IOutputPin& xshut_;

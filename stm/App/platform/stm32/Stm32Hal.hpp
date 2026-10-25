@@ -63,6 +63,9 @@ public:
     uint32_t errors() const { return errors_; }
 
 private:
+    bool finished(HAL_StatusTypeDef status);  // blocking transfer: counts errors
+    bool started(HAL_StatusTypeDef status);   // async transfer: takes the bus
+
     static constexpr uint32_t kTimeoutMs = 10;
     I2C_HandleTypeDef* h_;
     bool taken_ = false;

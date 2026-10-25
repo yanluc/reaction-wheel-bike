@@ -100,38 +100,34 @@ HAL_RAM_FUNC bool DmaSpi::transfer(const uint8_t* tx, uint8_t* rx, size_t len) {
     return true;
 }
 
+bool DmaI2c::finished(HAL_StatusTypeDef status) {
+    if (status != HAL_OK) ++errors_;
+    return status == HAL_OK;
+}
+
+bool DmaI2c::started(HAL_StatusTypeDef status) {
+    if (status != HAL_OK) return false;
+    taken_ = true;
+    startMs_ = HAL_GetTick();
+    return true;
+}
+
 bool DmaI2c::read(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) {
-    if (taken_) return false;
-    const bool ok = HAL_I2C_Mem_Read(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, data, len, kTimeoutMs) == HAL_OK;
-    if (!ok) ++errors_;
-    return ok;
+    return !taken_ && finished(HAL_I2C_Mem_Read(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, data, len, kTimeoutMs));
 }
 
 bool DmaI2c::write(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) {
-    if (taken_) return false;
-    const bool ok = HAL_I2C_Mem_Write(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, const_cast<uint8_t*>(data), len,
-                                      kTimeoutMs) == HAL_OK;
-    if (!ok) ++errors_;
-    return ok;
+    return !taken_ && finished(HAL_I2C_Mem_Write(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT,
+                                                 const_cast<uint8_t*>(data), len, kTimeoutMs));
 }
 
 bool DmaI2c::startRead(uint8_t addr7, uint16_t reg, uint8_t* data, size_t len) {
-    if (taken_ || HAL_I2C_Mem_Read_DMA(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, data, len) != HAL_OK) {
-        return false;
-    }
-    taken_ = true;
-    startMs_ = HAL_GetTick();
-    return true;
+    return !taken_ && started(HAL_I2C_Mem_Read_DMA(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, data, len));
 }
 
 bool DmaI2c::startWrite(uint8_t addr7, uint16_t reg, const uint8_t* data, size_t len) {
-    if (taken_ ||
-        HAL_I2C_Mem_Write_DMA(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT, const_cast<uint8_t*>(data), len) != HAL_OK) {
-        return false;
-    }
-    taken_ = true;
-    startMs_ = HAL_GetTick();
-    return true;
+    return !taken_ && started(HAL_I2C_Mem_Write_DMA(h_, addr7 << 1, reg, I2C_MEMADD_SIZE_16BIT,
+                                                    const_cast<uint8_t*>(data), len));
 }
 
 hal::II2c::Result DmaI2c::result() {

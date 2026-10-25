@@ -2,6 +2,8 @@
 // Devices backed by a PC simulator over the serial link: each proto::SimSensors is answered with
 // proto::SimActuators (lock-step).
 
+#include <algorithm>
+
 #include "interfaces/Platform.hpp"
 #include "platform/stm32/SerialLink.hpp"
 #include "proto/Messages.hpp"
@@ -13,7 +15,12 @@ class SimPlatform;
 class SimImu final : public IImu {
 public:
     bool init() override { return true; }
-    bool read(ImuSample& out) override;
+    bool read(ImuSample& out) override {
+        out = sample_;
+        const bool fresh = fresh_;
+        fresh_ = false;
+        return fresh;
+    }
 
 private:
     friend class SimPlatform;
@@ -60,11 +67,7 @@ public:
         enabled_ = enabled;
         if (!enabled) command_ = 0.0f;
     }
-    void setCommand(float command) override {
-        if (command > 1.0f) command = 1.0f;
-        if (command < -1.0f) command = -1.0f;
-        command_ = enabled_ ? command : 0.0f;
-    }
+    void setCommand(float command) override { command_ = enabled_ ? std::clamp(command, -1.0f, 1.0f) : 0.0f; }
     float command() const override { return command_; }
     bool enabled() const { return enabled_; }
 

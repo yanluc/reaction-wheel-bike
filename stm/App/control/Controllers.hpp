@@ -1,5 +1,7 @@
 #pragma once
 
+#include <algorithm>
+
 #include "interfaces/Control.hpp"
 
 namespace bike {
@@ -19,10 +21,7 @@ public:
     void reset() override {}
 
     float update(const BikeState& s, float) override {
-        float u = -(kp_ * s.roll + kd_ * s.rollRate);
-        if (u > 1.0f) u = 1.0f;
-        if (u < -1.0f) u = -1.0f;
-        return u;
+        return std::clamp(-(kp_ * s.roll + kd_ * s.rollRate), -1.0f, 1.0f);
     }
 
     bool setParam(uint8_t index, float value) override {

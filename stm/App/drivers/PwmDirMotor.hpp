@@ -1,5 +1,8 @@
 #pragma once
 
+#include <algorithm>
+#include <cmath>
+
 #include "hal/Hal.hpp"
 #include "interfaces/Devices.hpp"
 
@@ -24,12 +27,9 @@ public:
     }
 
     void setCommand(float command) override {
-        if (command > 1.0f) command = 1.0f;
-        if (command < -1.0f) command = -1.0f;
-        command_ = enabled_ ? command : 0.0f;
-        const bool forward = (command_ >= 0.0f) != invert_;
-        dir_.write(forward);
-        pwm_.setDuty(command_ >= 0.0f ? command_ : -command_);
+        command_ = enabled_ ? std::clamp(command, -1.0f, 1.0f) : 0.0f;
+        dir_.write((command_ >= 0.0f) != invert_);
+        pwm_.setDuty(std::fabs(command_));
     }
 
     float command() const override { return command_; }

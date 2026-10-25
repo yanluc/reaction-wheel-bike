@@ -76,7 +76,7 @@ HAL_RAM_FUNC void RadioStream::finishPacket() {
         if (p == nullptr) {
             ++stats_.queueOverflows;
         } else {
-            for (int i = 0; i < 8; ++i) p->words[i] = parity[i];
+            std::memcpy(p->words, parity, sizeof(parity));
             p->len = 32;
             head_ = (head_ + 1) % kQueueLen;
             ++stats_.parityPackets;
@@ -85,10 +85,7 @@ HAL_RAM_FUNC void RadioStream::finishPacket() {
 }
 
 bool RadioStream::sendTelemetry(const proto::Telemetry& t) {
-    if (!ready_) {
-        return false;
-    }
-    if (telemetryPending_ || telemetryQueued_) {
+    if (!ready_ || telemetryPending_ || telemetryQueued_) {
         return false;
     }
     std::memcpy(telemetry_.bytes(), &t, sizeof(t));
@@ -97,23 +94,21 @@ bool RadioStream::sendTelemetry(const proto::Telemetry& t) {
 }
 
 void RadioStream::serviceFlags(uint8_t status) {
-    {
-        // Drain the RX FIFO on every event: a full RX FIFO makes every ACK payload fail (MAX_RT forever).
-        uint8_t buf[nrf24::Nrf24::kMaxPayload];
-        uint8_t len;
-        while ((len = radio_.readPayload(buf)) != 0) {
-            telemetryQueued_ = false;
-            ++stats_.telemetryAcked;
-            everAcked_ = true;
-            lastAckMs_ = clock_.millis();
-            if (len == sizeof(proto::Command) && buf[0] == static_cast<uint8_t>(proto::MsgType::Command)) {
-                proto::Command cmd;
-                std::memcpy(&cmd, buf, sizeof(cmd));
-                if (cmd.id != 0 && cmd.id != lastCmdId_) {  // 0 = heartbeat
-                    lastCmdId_ = cmd.id;
-                    ++stats_.commands;
-                    sink_.onCommand(cmd);
-                }
+    // Drain the RX FIFO on every event: a full RX FIFO makes every ACK payload fail (MAX_RT forever).
+    uint8_t buf[nrf24::Nrf24::kMaxPayload];
+    uint8_t len;
+    while ((len = radio_.readPayload(buf)) != 0) {
+        telemetryQueued_ = false;
+        ++stats_.telemetryAcked;
+        everAcked_ = true;
+        lastAckMs_ = clock_.millis();
+        if (len == sizeof(proto::Command) && buf[0] == static_cast<uint8_t>(proto::MsgType::Command)) {
+            proto::Command cmd;
+            std::memcpy(&cmd, buf, sizeof(cmd));
+            if (cmd.id != 0 && cmd.id != lastCmdId_) {  // 0 = heartbeat
+                lastCmdId_ = cmd.id;
+                ++stats_.commands;
+                sink_.onCommand(cmd);
             }
         }
     }
@@ -166,23 +161,21 @@ HAL_RAM_FUNC void RadioStream::service() {
         return;
     }
 
+    // Telemetry first; it is always ACKed (the ACK payload carries the next command).
+    bool started;
     if (telemetryPending_) {
-        if (radio_.startQueueInPlace(&telemetry_.cmd, sizeof(proto::Telemetry), true)) {
-            inFlight_ = true;
-            inFlightTelemetry_ = true;
-        } else {
-            backoffPolls_ = 1;  // TX FIFO full
-        }
+        started = radio_.startQueueInPlace(&telemetry_.cmd, sizeof(proto::Telemetry), true);
+    } else if (head_ != tail_) {
+        Slot& slot = slots_[tail_];
+        started = radio_.startQueueInPlace(&slot.cmd, slot.len, mode_ == LinkMode::Ack);
+    } else {
         return;
     }
-    if (head_ != tail_) {
-        Slot& slot = slots_[tail_];
-        if (radio_.startQueueInPlace(&slot.cmd, slot.len, mode_ == LinkMode::Ack)) {
-            inFlight_ = true;
-            inFlightTelemetry_ = false;
-        } else {
-            backoffPolls_ = 1;  // TX FIFO full
-        }
+    if (started) {
+        inFlight_ = true;
+        inFlightTelemetry_ = telemetryPending_;
+    } else {
+        backoffPolls_ = 1;  // TX FIFO full
     }
 }
 

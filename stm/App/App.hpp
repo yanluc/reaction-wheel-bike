@@ -7,23 +7,13 @@
 #include "interfaces/Control.hpp"
 #include "interfaces/Platform.hpp"
 #include "platform/stm32/SerialLink.hpp"
-#include "platform/stm32/Stm32Hal.hpp"
 
 namespace bike {
-
-struct AppTiming {
-    uint32_t controlPeriodUs = 2000;
-    uint32_t auxPeriodUs = 20000;
-    uint32_t radioPeriodUs = 10000;
-    uint32_t serialTelemetryPeriodUs = 50000;
-    uint32_t statsPeriodUs = 1000000;
-};
 
 class App final : public ICommandSink, public stm32::IFrameListener {
 public:
     struct Deps {
         hal::IClock& clock;
-        stm32::DwtClock& dwt;
         stm32::SerialLink& serial;
         IPlatform& platform;
         RadioStream& radio;
@@ -31,8 +21,8 @@ public:
         IController* const* controllers;
         uint8_t controllerCount;
         Supervisor& supervisor;
-        stm32::Pin& ledLink;
-        stm32::Pin& ledArmed;
+        hal::IOutputPin& ledLink;
+        hal::IOutputPin& ledArmed;
     };
 
     explicit App(const Deps& d) : d_(d) {}
@@ -44,9 +34,14 @@ public:
     void onFrame(const uint8_t* msg, size_t len) override;
 
 private:
+    static constexpr uint32_t kControlPeriodUs = 2000;
+    static constexpr uint32_t kAuxPeriodUs = 20000;
+    static constexpr uint32_t kRadioPeriodUs = 10000;
+    static constexpr uint32_t kSerialTelemetryPeriodUs = 50000;
+    static constexpr uint32_t kStatsPeriodUs = 1000000;
     static constexpr uint32_t kImuTimeoutUs = 20000;
     static constexpr float kMaxImuDt = 0.01f;
-    static constexpr uint32_t kMaxTofSkewUs = 5000;
+    static constexpr int32_t kMaxTofSkewUs = 5000;
 
     void imuStep(uint32_t now);
     void distanceStep();

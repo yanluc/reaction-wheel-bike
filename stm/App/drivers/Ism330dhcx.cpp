@@ -62,16 +62,19 @@ bool Ism330dhcx::init() {
     }
     writeReg(kCtrl4C, kI2cDisable);
     writeReg(kCtrl3C, kBduIfInc);
-    writeReg(kCtrl1Xl, kOdr6667 | (static_cast<uint8_t>(cfg_.accel) << 2));
-    writeReg(kCtrl2G, kOdr6667 | (static_cast<uint8_t>(cfg_.gyro) << 2));
+    const uint8_t accel = static_cast<uint8_t>(cfg_.accel);
+    const uint8_t gyro = static_cast<uint8_t>(cfg_.gyro);
+    const uint8_t ctrl2g = kOdr6667 | (gyro << 2);
+    writeReg(kCtrl1Xl, kOdr6667 | (accel << 2));
+    writeReg(kCtrl2G, ctrl2g);
     writeReg(kCounterBdrReg1, kDrdyPulsed);  // edge IRQ: a latched level would stop after one missed read
     writeReg(kInt1Ctrl, kInt1DrdyG);
-    if (readReg(kCtrl2G) != (kOdr6667 | (static_cast<uint8_t>(cfg_.gyro) << 2))) {
+    if (readReg(kCtrl2G) != ctrl2g) {
         return false;
     }
 
-    accelScale_ = kAccelMgPerLsb[static_cast<uint8_t>(cfg_.accel)] * 1e-3f * kG;
-    gyroScale_ = kGyroMdpsPerLsb[static_cast<uint8_t>(cfg_.gyro)] * 1e-3f * kDegToRad;
+    accelScale_ = kAccelMgPerLsb[accel] * 1e-3f * kG;
+    gyroScale_ = kGyroMdpsPerLsb[gyro] * 1e-3f * kDegToRad;
     tx_[0] = kBurstStart | kRead;
     ok_ = true;
     return true;

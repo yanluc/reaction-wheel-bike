@@ -4,15 +4,6 @@
 
 namespace bike {
 
-bool SimImu::read(ImuSample& out) {
-    if (!fresh_) {
-        return false;
-    }
-    out = sample_;
-    fresh_ = false;
-    return true;
-}
-
 bool SimPlatform::init() {
     link_.addListener(proto::MsgType::SimSensors, *this);
     return motor_.init();

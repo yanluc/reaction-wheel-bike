@@ -144,19 +144,25 @@ bool Vl53l1x::trigger() {
     return true;
 }
 
+hal::II2c::Result Vl53l1x::busResult() {
+    const hal::II2c::Result r = bus_.result();
+    if (r == hal::II2c::Result::Error) ++busErrors_;
+    return r;
+}
+
 void Vl53l1x::poll() {
+    using R = hal::II2c::Result;
     if (!ok_) {
         return;
     }
-    hal::II2c::Result r;
+    R r;
     switch (state_) {
         case State::Idle:
             break;
         case State::Triggering:
-            r = bus_.result();
-            if (r == hal::II2c::Result::Pending) break;
-            if (r == hal::II2c::Result::Error) {
-                ++busErrors_;
+            r = busResult();
+            if (r == R::Pending) break;
+            if (r == R::Error) {
                 state_ = State::Idle;
                 break;
             }
@@ -179,20 +185,17 @@ void Vl53l1x::poll() {
             }
             break;
         case State::CheckStatus:
-            r = bus_.result();
-            if (r == hal::II2c::Result::Pending) break;
+            r = busResult();
+            if (r == R::Pending) break;
             state_ = State::Measuring;
-            if (r == hal::II2c::Result::Error) {
-                ++busErrors_;
-            } else if (dataReady(status_) && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
+            if (r == R::Ok && dataReady(status_) && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
                 state_ = State::ReadResult;
             }
             break;
         case State::ReadResult:
-            r = bus_.result();
-            if (r == hal::II2c::Result::Pending) break;
-            if (r == hal::II2c::Result::Error) {
-                ++busErrors_;
+            r = busResult();
+            if (r == R::Pending) break;
+            if (r == R::Error) {
                 state_ = State::Measuring;  // retried until the timeout
                 break;
             }
@@ -200,10 +203,7 @@ void Vl53l1x::poll() {
             state_ = bus_.startWrite(addr_, kInterruptClear, &clear_, 1) ? State::ClearIrq : State::Idle;
             break;
         case State::ClearIrq:
-            r = bus_.result();
-            if (r == hal::II2c::Result::Pending) break;
-            if (r == hal::II2c::Result::Error) ++busErrors_;
-            state_ = State::Idle;
+            if (busResult() != R::Pending) state_ = State::Idle;
             break;
     }
 }

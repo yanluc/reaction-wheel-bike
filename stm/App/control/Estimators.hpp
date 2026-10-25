@@ -132,14 +132,18 @@ private:
         accelSum_[0] = accelSum_[1] = 0.0f;
     }
 
+    void notStill() {
+        ++restarts_;
+        restartCalibration();
+    }
+
     void calibrate(const ImuSample& imu, float dt, BikeState& state) {
         state.estimatorReady = false;
         if (calibCount_ == 0) {
             for (int i = 0; i < 3; ++i) gyro0_[i] = imu.gyro[i];  // sums relative to the first sample
         }
         if (std::fabs(accelNorm(imu) - kG) > cfg_.stillAccel) {
-            ++restarts_;
-            restartCalibration();
+            notStill();
             return;
         }
         for (int i = 0; i < 3; ++i) {
@@ -159,8 +163,7 @@ private:
         for (int i = 0; i < 3; ++i) {
             const float mean = gyroSum_[i] / n;
             if (gyroSq_[i] / n - mean * mean > cfg_.stillGyroStd * cfg_.stillGyroStd) {
-                ++restarts_;
-                restartCalibration();
+                notStill();
                 return;
             }
         }

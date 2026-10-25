@@ -1,22 +1,14 @@
 #include "App.hpp"
 
+#include <algorithm>
 #include <cstring>
 
 namespace bike {
 namespace {
 
-int16_t toMilli(float v) {
-    float m = v * 1000.0f;
-    if (m > 32767.0f) m = 32767.0f;
-    if (m < -32768.0f) m = -32768.0f;
-    return static_cast<int16_t>(m);
-}
+int16_t toMilli(float v) { return static_cast<int16_t>(std::clamp(v * 1000.0f, -32768.0f, 32767.0f)); }
 
-uint16_t toMm(float meters) {
-    if (meters < 0.0f) return 0;
-    const float mm = meters * 1000.0f;
-    return mm > 65535.0f ? 65535 : static_cast<uint16_t>(mm);
-}
+uint16_t toMm(float meters) { return static_cast<uint16_t>(std::clamp(meters * 1000.0f, 0.0f, 65535.0f)); }
 
 struct Periodic {
     uint32_t period;
@@ -124,9 +116,9 @@ void App::distanceStep() {
     }
     // Only a pair measured at the same moment gives the roll; otherwise keep the newer one and wait.
     const int32_t skew = static_cast<int32_t>(leftUs_ - rightUs_);
-    if (skew > static_cast<int32_t>(kMaxTofSkewUs)) {
+    if (skew > kMaxTofSkewUs) {
         newRight_ = false;
-    } else if (-skew > static_cast<int32_t>(kMaxTofSkewUs)) {
+    } else if (skew < -kMaxTofSkewUs) {
         newLeft_ = false;
     } else {
         newLeft_ = newRight_ = false;
@@ -137,11 +129,9 @@ void App::distanceStep() {
 void App::controlStep(float dt) {
     IMotor& motor = d_.platform.motor();
     const bool run = d_.supervisor.update(state_, d_.radio.linkUp());
+    motor.setEnabled(run);
     if (run) {
-        motor.setEnabled(true);
         motor.setCommand(controller_->update(state_, dt));
-    } else {
-        motor.setEnabled(false);
     }
 }
 
@@ -203,13 +193,12 @@ bool App::logStatsLine(uint8_t line) {
 }
 
 void App::run() {
-    const AppTiming timing;
     uint32_t now = d_.clock.micros();
-    Periodic control{timing.controlPeriodUs, now};
-    Periodic aux{timing.auxPeriodUs, now};
-    Periodic radio{timing.radioPeriodUs, now};
-    Periodic serialTlm{timing.serialTelemetryPeriodUs, now};
-    Periodic stats{timing.statsPeriodUs, now + timing.statsPeriodUs};
+    Periodic control{kControlPeriodUs, now};
+    Periodic aux{kAuxPeriodUs, now};
+    Periodic radio{kRadioPeriodUs, now};
+    Periodic serialTlm{kSerialTelemetryPeriodUs, now};
+    Periodic stats{kStatsPeriodUs, now + kStatsPeriodUs};
     uint32_t lastControlUs = now;
     uint32_t lastLoopUs = now;
     uint32_t blink = 0;
@@ -257,11 +246,7 @@ void App::run() {
             statsLine_ = 1;
         } else if (statsLine_ != 0) {
             // One line per iteration: a whole report at once stalls the loop for ~1 ms.
-            if (!logStatsLine(statsLine_ - 1)) {
-                statsLine_ = 0;
-            } else {
-                ++statsLine_;
-            }
+            statsLine_ = logStatsLine(statsLine_ - 1) ? statsLine_ + 1 : 0;
         }
     }
 }

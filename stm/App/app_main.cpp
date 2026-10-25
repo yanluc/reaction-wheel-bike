@@ -95,7 +95,6 @@ void app_main(void) {
     static RadioStream radioLink(radio, clock, sink);
     static App application(App::Deps{
         clock,
-        clock,
         serial,
         platform,
         radioLink,
@@ -108,7 +107,6 @@ void app_main(void) {
     });
     sink.target = &application;
 
-    nrf24::Config radioCfg;
-    application.init(radioCfg);
+    application.init(nrf24::Config{});
     application.run();
 }

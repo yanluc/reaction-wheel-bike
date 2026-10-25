@@ -40,6 +40,7 @@ public:
 
 private:
     void kickTx();
+    void releaseInFlight();  // ISR context: the DMA chunk is sent or aborted
     void restartRx();
 
     static constexpr size_t kRxSize = 512;

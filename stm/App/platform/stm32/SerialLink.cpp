@@ -1,5 +1,6 @@
 #include "platform/stm32/SerialLink.hpp"
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
@@ -7,7 +8,9 @@
 namespace bike::stm32 {
 namespace {
 SerialLink* g_lpuart1 = nullptr;
-}
+
+SerialLink* linkFor(UART_HandleTypeDef* h) { return (h->Instance == LPUART1) ? g_lpuart1 : nullptr; }
+}  // namespace
 
 void SerialLink::start() {
     if (h_->Instance == LPUART1) {
@@ -94,22 +97,25 @@ void SerialLink::log(const char* fmt, ...) {
     if (n < 0) {
         return;
     }
-    const size_t len = 1 + ((static_cast<size_t>(n) < sizeof(msg) - 1) ? static_cast<size_t>(n) : sizeof(msg) - 2);
-    send(msg, len);
+    send(msg, 1 + std::min(static_cast<size_t>(n), sizeof(msg) - 2));
+}
+
+void SerialLink::releaseInFlight() {
+    txTail_ = (txTail_ + txInFlight_) % kTxSize;
+    txInFlight_ = 0;
 }
 
 void SerialLink::onTxComplete(UART_HandleTypeDef* h) {
-    SerialLink* self = (h->Instance == LPUART1) ? g_lpuart1 : nullptr;
+    SerialLink* self = linkFor(h);
     if (self == nullptr) {
         return;
     }
-    self->txTail_ = (self->txTail_ + self->txInFlight_) % kTxSize;
-    self->txInFlight_ = 0;
+    self->releaseInFlight();
     self->kickTx();
 }
 
 void SerialLink::onError(UART_HandleTypeDef* h) {
-    SerialLink* self = (h->Instance == LPUART1) ? g_lpuart1 : nullptr;
+    SerialLink* self = linkFor(h);
     if (self == nullptr) {
         return;
     }
@@ -118,8 +124,7 @@ void SerialLink::onError(UART_HandleTypeDef* h) {
         self->rxRestart_ = true;
     }
     if (h->gState == HAL_UART_STATE_READY && self->txInFlight_ != 0) {  // TX aborted -> drop chunk
-        self->txTail_ = (self->txTail_ + self->txInFlight_) % kTxSize;
-        self->txInFlight_ = 0;
+        self->releaseInFlight();
     }
 }
 
