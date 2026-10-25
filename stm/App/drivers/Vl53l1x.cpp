@@ -22,7 +22,6 @@ constexpr uint16_t kSystemStatus = 0x00E5;
 constexpr uint16_t kModelId = 0x010F;
 constexpr uint16_t kConfigStart = 0x002D;
 constexpr uint8_t kStatusValid = 9;
-constexpr uint32_t kStatusPollMs = 2;
 
 // VL51L1X_DEFAULT_CONFIGURATION (registers 0x2D..0x87) from ST VL53L1X ULD.
 // COPYRIGHT(c) 2018 STMicroelectronics, BSD 3-Clause License.
@@ -167,28 +166,13 @@ void Vl53l1x::poll() {
                 break;
             }
             startUs_ = clock_.micros();
-            lastPollMs_ = clock_.millis();
             state_ = State::Measuring;
             break;
         case State::Measuring:
             if (clock_.micros() - startUs_ > 3 * timingBudgetUs()) {
                 ++timeouts_;
                 state_ = State::Idle;
-            } else if (gpio1_ != nullptr) {
-                if (gpio1_->read() && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
-                    state_ = State::ReadResult;
-                }
-            } else if (clock_.millis() - lastPollMs_ >= kStatusPollMs &&
-                       bus_.startRead(addr_, kTioHvStatus, &status_, 1)) {
-                lastPollMs_ = clock_.millis();
-                state_ = State::CheckStatus;
-            }
-            break;
-        case State::CheckStatus:
-            r = busResult();
-            if (r == R::Pending) break;
-            state_ = State::Measuring;
-            if (r == R::Ok && dataReady(status_) && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
+            } else if (gpio1_.read() && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
                 state_ = State::ReadResult;
             }
             break;

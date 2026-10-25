@@ -10,9 +10,6 @@ enum class MsgType : uint8_t {
     Telemetry = 0x01,     // bike -> base (radio payload) -> laptop
     Command = 0x02,       // laptop -> base -> bike (radio ACK payload)
     Log = 0x03,           // text, serial links only
-    StreamData = 0x05,    // bike -> base, NOACK, samples (see StreamDataPacket)
-    StreamParity = 0x06,  // bike -> base, NOACK, XOR parity of one FEC group
-    Bench = 0x7E,         // radio throughput test (BIKE_RADIO_BENCH)
     BaseStatus = 0x10,    // base -> laptop
     BaseCommand = 0x11,   // laptop -> base (not forwarded to the bike)
     ScanResult = 0x12,    // base -> laptop
@@ -27,7 +24,7 @@ enum class CommandId : uint8_t {
     Disarm = 3,
     SetController = 4,  // arg = controller index
     SetParam = 5,       // param = index, arg = value * 1000
-    SetTestDrops = 6,   // stream test: arg != 0 -> bike drops packets on purpose (FEC demo)
+    // 6: unused (was SetTestDrops)
     Calibrate = 7,      // disarm, restart the estimator calibration (bike must stand still)
 };
 
@@ -96,44 +93,6 @@ struct ScanResult {
     uint16_t sweeps;
     uint8_t hits[64];  // hits[i] = sweeps with carrier on firstChannel + i (saturates at 255)
 };
-
-// NOACK sample stream with XOR parity (stream/XorFec.hpp); keep in sync with tools/bikelink.py.
-struct StreamSample {
-    int16_t v[4];
-};
-
-constexpr uint8_t kStreamHeader = 3;  // type + seq
-constexpr uint8_t kStreamPayload = 32 - kStreamHeader;
-constexpr uint8_t kSamplesPerPacket = kStreamPayload / sizeof(StreamSample);
-
-// Always a full 32 B so parity XORs fixed blocks. Sample index of samples[i] = seq * kSamplesPerPacket + i.
-struct StreamDataPacket {
-    MsgType type = MsgType::StreamData;
-    uint16_t seq;
-    StreamSample samples[kSamplesPerPacket];
-    uint8_t pad[kStreamPayload - kSamplesPerPacket * sizeof(StreamSample)];
-};
-static_assert(sizeof(StreamDataPacket) == 32, "stream packets are full nRF24 payloads");
-
-// Parity packet: payload = XOR of bytes [3..31] of the kFecGroup data packets with
-// seq = firstSeq + k * kFecDepth, k = 0..kFecGroup-1.
-struct StreamParityPacket {
-    MsgType type = MsgType::StreamParity;
-    uint16_t firstSeq;
-    uint8_t xorPayload[kStreamPayload];
-};
-static_assert(sizeof(StreamParityPacket) == 32, "stream packets are full nRF24 payloads");
-
-struct BenchPacket {
-    MsgType type = MsgType::Bench;
-    uint8_t mode;     // BenchMode
-    uint32_t seq;     // per mode, restarts at 0 for every phase
-    uint32_t timeUs;
-    uint8_t fill[22];
-};
-static_assert(sizeof(BenchPacket) == 32, "BenchPacket is one full nRF24 payload");
-
-enum class BenchMode : uint8_t { Ack = 0, NoAckStream = 1, AckPipelined = 2 };
 
 struct SimSensors {
     MsgType type = MsgType::SimSensors;

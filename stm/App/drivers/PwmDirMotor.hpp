@@ -33,6 +33,7 @@ public:
     }
 
     float command() const override { return command_; }
+    bool enabled() const { return enabled_; }
 
 private:
     IPwmOutput& pwm_;

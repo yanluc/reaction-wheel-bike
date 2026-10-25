@@ -32,28 +32,27 @@ void HwPlatform::poll() {
     if (triggerRight_ && distRight_.trigger()) triggerRight_ = false;
 }
 
+// uint32_t is unsigned long on arm-none-eabi: %lu.
 int HwPlatform::diagnostics(uint8_t line, char* out, int size) {
     using A = stm32::AdcDma;
+    const Vl53l1x& l = distLeft_;
+    const Vl53l1x& r = distRight_;
     switch (line) {
         case 0: {
             const uint32_t n = imu_.samples();
-            const int len = std::snprintf(out, size, "IMU ok=%d who=0x%02X samples/s=%lu gaps=%lu overruns=%lu overflows=%lu",
-                                          imu_.ok() ? 1 : 0, imu_.whoAmI(), static_cast<unsigned long>(n - lastImuSamples_),
-                                          static_cast<unsigned long>(imu_.gaps()), static_cast<unsigned long>(imu_.overruns()),
-                                          static_cast<unsigned long>(imu_.overflows()));
+            const int len =
+                std::snprintf(out, size, "IMU ok=%d who=0x%02X samples/s=%lu gaps=%lu overruns=%lu overflows=%lu",
+                              imu_.ok(), imu_.whoAmI(), n - lastImuSamples_, imu_.gaps(), imu_.overruns(),
+                              imu_.overflows());
             lastImuSamples_ = n;
             return len;
         }
         case 1:
             return std::snprintf(
                 out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu bus=%lu tmo=%lu",
-                distLeft_.ok() ? 1 : 0, distLeft_.lastMm(), distLeft_.lastStatus(),
-                static_cast<unsigned long>(distLeft_.measurements()), static_cast<unsigned long>(distLeft_.invalid()),
-                distRight_.ok() ? 1 : 0, distRight_.lastMm(), distRight_.lastStatus(),
-                static_cast<unsigned long>(distRight_.measurements()), static_cast<unsigned long>(distRight_.invalid()),
-                static_cast<unsigned long>(d_.i2c.errors()),
-                static_cast<unsigned long>(distLeft_.busErrors() + distRight_.busErrors()),
-                static_cast<unsigned long>(distLeft_.timeouts() + distRight_.timeouts()));
+                l.ok(), l.lastMm(), l.lastStatus(), l.measurements(), l.invalid(), r.ok(), r.lastMm(),
+                r.lastStatus(), r.measurements(), r.invalid(), d_.i2c.errors(), l.busErrors() + r.busErrors(),
+                l.timeouts() + r.timeouts());
         case 2: {
             if (!d_.adc.running()) {
                 return std::snprintf(out, size, "ADC not running");

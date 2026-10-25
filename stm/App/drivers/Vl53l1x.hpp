@@ -1,8 +1,7 @@
 #pragma once
 // VL53L1X time-of-flight sensor (register sequence from ST's ULD). init() is blocking (boot, new
 // address, ~0.1 s calibration). Measurements are one-shot: trigger() starts one, so the MCU can start
-// several sensors at the same moment. poll() reads the result by DMA when GPIO1 signals data ready
-// (or, without the pin, after polling the status register every 2 ms).
+// several sensors at the same moment. poll() reads the result by DMA when GPIO1 signals data ready.
 
 #include <cstdint>
 
@@ -20,7 +19,7 @@ public:
         uint16_t timingBudgetMs = 20;       // short mode: 15, 20, 33, 50, 100, 200, 500
     };
 
-    Vl53l1x(hal::II2c& bus, hal::IOutputPin& xshut, hal::IInputPin* gpio1, hal::IClock& clock, const Config& cfg)
+    Vl53l1x(hal::II2c& bus, hal::IOutputPin& xshut, hal::IInputPin& gpio1, hal::IClock& clock, const Config& cfg)
         : bus_(bus), xshut_(xshut), gpio1_(gpio1), clock_(clock), cfg_(cfg) {}
 
     void shutdown() { xshut_.write(false); }
@@ -40,7 +39,7 @@ public:
     uint32_t timeouts() const { return timeouts_; }
 
 private:
-    enum class State : uint8_t { Idle, Triggering, Measuring, CheckStatus, ReadResult, ClearIrq };
+    enum class State : uint8_t { Idle, Triggering, Measuring, ReadResult, ClearIrq };
 
     bool wrByte(uint16_t reg, uint8_t v);
     bool wrWord(uint16_t reg, uint16_t v);
@@ -53,15 +52,13 @@ private:
 
     hal::II2c& bus_;
     hal::IOutputPin& xshut_;
-    hal::IInputPin* gpio1_;
+    hal::IInputPin& gpio1_;
     hal::IClock& clock_;
     Config cfg_;
     uint8_t addr_ = kDefaultAddress;
 
     bool ok_ = false;
     State state_ = State::Idle;
-    uint32_t lastPollMs_ = 0;
-    uint8_t status_ = 0;
     uint8_t result_[17] = {};
     uint8_t clear_ = 0x01;
     uint8_t oneShot_ = 0x10;

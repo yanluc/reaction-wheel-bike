@@ -26,8 +26,7 @@ struct Periodic {
 void App::init(const nrf24::Config& radioCfg) {
     d_.serial.start();
     d_.serial.addListener(proto::MsgType::Command, *this);
-    d_.serial.log("bike fw: platform=%s, SYSCLK=%lu MHz", d_.platform.name(),
-                  static_cast<unsigned long>(SystemCoreClock / 1000000u));
+    d_.serial.log("bike fw: platform=%s, SYSCLK=%lu MHz", d_.platform.name(), SystemCoreClock / 1000000u);
 
     if (!d_.platform.init()) {
         d_.serial.log("platform init FAILED");
@@ -163,21 +162,19 @@ proto::Telemetry App::buildTelemetry(uint16_t seq) {
     return t;
 }
 
+// uint32_t is unsigned long on arm-none-eabi: %lu.
 bool App::logStatsLine(uint8_t line) {
     if (line == 0) {
-        const RadioStream::Stats& rs = d_.radio.stats();
-        d_.serial.log("radio tlm sent=%lu acked=%lu fail=%lu cmds=%lu link=%d stream=%lu",
-                      static_cast<unsigned long>(rs.telemetrySent), static_cast<unsigned long>(rs.telemetryAcked),
-                      static_cast<unsigned long>(rs.telemetryFailed), static_cast<unsigned long>(rs.commands),
-                      d_.radio.linkUp() ? 1 : 0, static_cast<unsigned long>(rs.dataPackets));
+        const RadioLink::Stats& rs = d_.radio.stats();
+        d_.serial.log("radio tlm sent=%lu acked=%lu fail=%lu cmds=%lu link=%d", rs.telemetrySent, rs.telemetryAcked,
+                      rs.telemetryFailed, rs.commands, d_.radio.linkUp());
         return true;
     }
     if (line == 1) {
         d_.serial.log("loops/s=%lu maxgap=%luus imu/s=%lu roll=%dmrad armed=%d failsafe=%d ctrl=%s uart rxerr=%lu drop=%lu",
-                      static_cast<unsigned long>(snap_.loops), static_cast<unsigned long>(snap_.maxLoopGapUs),
-                      static_cast<unsigned long>(snap_.imuSamples), static_cast<int>(state_.roll * 1000.0f),
-                      d_.supervisor.armed() ? 1 : 0, d_.supervisor.failsafe() ? 1 : 0, controller_->name(),
-                      static_cast<unsigned long>(d_.serial.rxErrors()), static_cast<unsigned long>(d_.serial.droppedTx()));
+                      snap_.loops, snap_.maxLoopGapUs, snap_.imuSamples, static_cast<int>(state_.roll * 1000.0f),
+                      d_.supervisor.armed(), d_.supervisor.failsafe(), controller_->name(), d_.serial.rxErrors(),
+                      d_.serial.droppedTx());
         return true;
     }
     char diag[proto::kMaxFramePayload - 1];

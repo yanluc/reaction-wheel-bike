@@ -18,10 +18,6 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # HW = real sensors/motor, SIM = devices backed by the PC simulator over LPUART1
 set(BIKE_PLATFORM "HW" CACHE STRING "Bike platform: HW or SIM")
 set_property(CACHE BIKE_PLATFORM PROPERTY STRINGS HW SIM)
-option(BIKE_RADIO_BENCH "Build the radio throughput benchmark instead of the app" OFF)
-option(BIKE_STREAM_TEST "Build the stream test (4 periodic signals) instead of the app" OFF)
-option(BIKE_STREAM_ACK "Stream test: ACK every packet instead of NOACK + XOR parity" OFF)
-set(BIKE_STREAM_RATE_HZ 6700 CACHE STRING "Stream test sample rate [Hz], multiple of 10")
 
 
 # Define the build type
@@ -61,9 +57,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
     App/app_main.cpp
     App/App.cpp
-    App/comms/RadioStream.cpp
-    App/bench/RadioBench.cpp
-    App/bench/StreamTest.cpp
+    App/comms/RadioLink.cpp
     App/platform/stm32/Stm32Hal.cpp
     App/platform/stm32/SerialLink.cpp
     App/platform/stm32/AdcDma.cpp
@@ -86,10 +80,6 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
 target_compile_definitions(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user defined symbols
     $<$<STREQUAL:${BIKE_PLATFORM},SIM>:BIKE_PLATFORM_SIM=1>
-    $<$<BOOL:${BIKE_RADIO_BENCH}>:BIKE_RADIO_BENCH=1>
-    $<$<BOOL:${BIKE_STREAM_TEST}>:BIKE_STREAM_TEST=1>
-    $<$<BOOL:${BIKE_STREAM_ACK}>:BIKE_STREAM_ACK=1>
-    BIKE_STREAM_RATE_HZ=${BIKE_STREAM_RATE_HZ}
 )
 
 target_compile_options(${CMAKE_PROJECT_NAME} PRIVATE

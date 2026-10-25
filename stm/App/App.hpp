@@ -2,7 +2,7 @@
 
 #include <cstdint>
 
-#include "comms/RadioStream.hpp"
+#include "comms/RadioLink.hpp"
 #include "control/Supervisor.hpp"
 #include "interfaces/Control.hpp"
 #include "interfaces/Platform.hpp"
@@ -16,7 +16,7 @@ public:
         hal::IClock& clock;
         stm32::SerialLink& serial;
         IPlatform& platform;
-        RadioStream& radio;
+        RadioLink& radio;
         IEstimator& estimator;
         IController* const* controllers;
         uint8_t controllerCount;

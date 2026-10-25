@@ -102,7 +102,7 @@ USB-C do laptopa: ramki binarne przez CDC. GP16 to wbudowana dioda WS2812, nieu�
  IPlatform ──────── │ IEstimator -> IController -> Supervisor -> IMotor │
   HwPlatform        └──────┬──────────────────────────────┬────────────┘
   SimPlatform              │ Telemetry / Command          │ logi, Telemetry, Command, Sim*
-                     RadioStream (nRF24 PTX)          SerialLink (LPUART1, DMA)
+                     RadioLink (nRF24 PTX)            SerialLink (LPUART1, DMA)
 ```
 
 - **`interfaces/`**: kontrakty, od których zależy aplikacja.
@@ -182,7 +182,7 @@ Log z `tools/link_console.py --port <ST-LINK> --baud 2000000`:
   - `App` łączy w parę tylko pomiary różniące się o ≤ 5 ms. W przeciwnym razie odrzuca starszy.
   - Na przyszłość: znaczniki czasu pozwolą skompensować opóźnienie pomiaru w filtrze (~10–20 ms).
   - Brak wyniku po 3 budżetach to timeout (`tmo` w logu), po którym czujnik wraca do bezczynności.
-- **Odczyt:** stan GPIO1 (aktywny wysoki) oznacza gotowy wynik. Wtedy idzie odczyt 17 B od 0x0089 przez DMA, a potem kasowanie przerwania (0x0086), też przez DMA. Obie operacje są asynchroniczne. Magistrala jest zajęta do odebrania wyniku przez właściciela, więc dwa czujniki się nie mieszają. Bez podłączonego GPIO1 (`nullptr`) sterownik co 2 ms sprawdza rejestr statusu.
+- **Odczyt:** stan GPIO1 (aktywny wysoki) oznacza gotowy wynik. Wtedy idzie odczyt 17 B od 0x0089 przez DMA, a potem kasowanie przerwania (0x0086), też przez DMA. Obie operacje są asynchroniczne. Magistrala jest zajęta do odebrania wyniku przez właściciela, więc dwa czujniki się nie mieszają. GPIO1 musi być podłączone.
 - **Poprawny pomiar:** tylko range status 9, czyli „valid”; inne są liczone jako `bad`.
 - **Diagnostyka:** `ToF L ok mm st n bad | R ... | i2c err tmo`. Przy poprawnej pracy `n` rośnie o ~40/s na czujnik.
 
@@ -215,7 +215,7 @@ Po starcie (i po komendzie `calibrate`) rower musi stać nieruchomo przez 1.5 s.
 
 ## Radio
 
-Rower jest nadajnikiem (PTX): nadaje telemetrię i strumień, nigdy nie blokując pętli. Baza jest odbiornikiem (PRX) i w odpowiedzi (ACK payload) odsyła komendy. Piny są w sekcji [Połączenia](#połączenia).
+Rower jest nadajnikiem (PTX): nadaje telemetrię co 10 ms, każdy pakiet z ACK sprzętowym, nigdy nie blokując pętli. Pakiet bez ACK po wyczerpaniu ponowień (MAX_RT) jest wyrzucany, bo następna telemetria i tak jest świeższa. Baza jest odbiornikiem (PRX) i w odpowiedzi (ACK payload) odsyła komendy. Piny są w sekcji [Połączenia](#połączenia).
 
 Parametry łącza (wspólne, `nrf24::Config`): kanał 20 (2420 MHz, wybrany skanem), 2 Mbps, CRC 16 bit, adres `BIKE1`, ARD 500 µs, ARC 3, PA Low (−12 dBm).
 
@@ -233,7 +233,7 @@ Warunki pomiaru:
 - kanał 20, 2 Mbps, SPI 10 MHz, payload 32 B;
 - odległość ok. 1 m;
 - mierzone end-to-end: rower → baza → USB → laptop;
-- firmware z presetem `Release-Bench` i narzędzie `tools/radio_bench.py` (2026-10-18).
+- firmware z presetem `Release-Bench` i narzędzie `tools/radio_bench.py` (2026-10-18). Oba zostały potem usunięte; są w historii gita (commit `df25c8f`).
 
 | Tryb | Pakiety/s | Payload | Straty |
 |---|---|---|---|
@@ -248,35 +248,11 @@ Warunki pomiaru:
 ### Dwie pułapki modułu nRF24 (znalezione pomiarem)
 
 1. **Zapis do pełnej kolejki nadawczej uszkadza dane.** Według datasheetu taki zapis jest ignorowany, ale na tych modułach pakiet w kolejce przesuwa się o jeden bajt. Przy stale pełnej kolejce uszkodzonych było ~83% pakietów. `startQueueInPlace()` zawsze sprawdza więc bit TX_FULL przed zapisem (jeden bajt SPI). Kosztuje to ~1% CPU, ale bez tego dane są uszkadzane.
-2. **Pełna kolejka odbiorcza po stronie nadawcy blokuje wszystkie ACK z payloadem.** Jeśli jakikolwiek ACK payload zostanie nieodczytany, po 3 takich kolejka jest pełna i każdy kolejny pakiet kończy się wyczerpaniem ponowień (MAX_RT). Flaga RX_DR jest wtedy już skasowana, więc nic nie zgłasza problemu. Dlatego zarówno `pollTransmit()`, jak i obsługa flag w `RadioStream` opróżniają całą kolejkę odbiorczą przy każdym zdarzeniu (`drainRx()`), także przy niepowodzeniu.
+2. **Pełna kolejka odbiorcza po stronie nadawcy blokuje wszystkie ACK z payloadem.** Jeśli jakikolwiek ACK payload zostanie nieodczytany, po 3 takich kolejka jest pełna i każdy kolejny pakiet kończy się wyczerpaniem ponowień (MAX_RT). Flaga RX_DR jest wtedy już skasowana, więc nic nie zgłasza problemu. Dlatego zarówno `pollTransmit()`, jak i obsługa flag w `RadioLink` opróżniają całą kolejkę odbiorczą przy każdym zdarzeniu (`drainRx()`), także przy niepowodzeniu.
 
-## Strumień próbek (`RadioStream`)
+## Strumień próbek (usunięty)
 
-Rower jest nadajnikiem nRF24. Tryb wybiera `LinkMode`:
-
-| | `NoAckFec` (domyślny) | `Ack` |
-|---|---|---|
-| dane | bez ACK + parzystość XOR 8×8 (`stream/XorFec.hpp`) | każdy pakiet z ACK, bez parzystości |
-| zgubiony pakiet | laptop odtwarza go z parzystości (serie do 8 pakietów); dłuższe serie zostają jako luki | moduł sam ponawia; po MAX_RT wystarczy skasować flagę, a pakiet idzie jeszcze raz. Nic nie ginie, dopóki łącze w ogóle działa |
-| komendy | ACK payload pakietu telemetrii (co 10 ms) | ACK payload z pulsem (co ~5 ms) |
-| maks. próbkowanie przy 4 × int16 (3 próbki w pakiecie) | ~6.7 kHz zmierzone (sufit ~16 kHz) | ~6 kHz sufit; **5 kHz zmierzone bez strat**; 6.7 kHz się nie mieści |
-| CPU STM32 (cykle DWT, łącznie z pakowaniem) | **4.7% przy 6.7 kHz** | **3.6% przy 5 kHz** |
-
-Jak niski koszt CPU jest osiągnięty:
-- zapisy do radia przez DMA bez czekania, prosto ze slotu kolejki (zero-copy);
-- krótkie transakcje (odczyt stanu, kasowanie flag) przez bezpośredni dostęp do rejestru SPI;
-- flagi ACK sygnalizowane pinem IRQ (TX_DS zamaskowane);
-- gorące funkcje w RAM (`HAL_RAM_FUNC`);
-- w kanałach DMA przeładowywane tylko adres, licznik i enable.
-
-Test praktyczny: firmware `Release-StreamTest` (bez ACK) lub `Release-StreamTestAck` (z ACK). Częstotliwość próbkowania ustawia `-DBIKE_STREAM_RATE_HZ=…` (wielokrotność 10). Firmware generuje 4 przebiegi: sinus 1 Hz, trójkąt 2 Hz, prostokąt 0.5 Hz i piłę 5 Hz.
-
-```bash
-tools/stream_plot.py                       # wykres na żywo; klawisz d: celowe gubienie pakietów (tylko bez ACK)
-tools/stream_plot.py --headless 20 --rate 5000
-```
-
-Skrypt sprawdza każdą próbkę z tymi samymi wzorami co firmware. Wynik: 0 złych próbek we wszystkich testach.
+Wcześniej `RadioStream` umiał też wysyłać szybki strumień próbek: bez ACK z parzystością XOR 8×8 (zmierzone ~6.7 kHz przy 4 × int16, 4.7% CPU) albo z ACK (5 kHz bez strat, 3.6% CPU). Aplikacja go nie używała, więc razem z firmware testowym (`Release-StreamTest*`) i `tools/stream_plot.py` został usunięty. Kod jest w historii gita (commit `df25c8f`). Teraz łącze przenosi tylko telemetrię z ACK (`RadioLink`).
 
 ## Skan kanałów
 
@@ -310,8 +286,6 @@ Pakiet to struktura packed, little-endian, z pierwszym bajtem `MsgType`:
 export PATH=/opt/st/stm32cubeide_2.2.0/plugins/com.st.stm32cube.ide.mcu.externaltools.gnu-tools-for-stm32.14.3.rel1.linux64_1.0.100.202602081740/tools/bin:$PATH
 cmake --preset Release && cmake --build --preset Release            # HW
 cmake --preset Release-Sim && cmake --build --preset Release-Sim    # SIM
-cmake --preset Release-Bench && cmake --build --preset Release-Bench # test przepustowości radia
-cmake --preset Release-StreamTestAck -DBIKE_STREAM_RATE_HZ=5000 && cmake --build --preset Release-StreamTestAck
 /opt/st/stm32cubeide_2.2.0/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.linux64_2.2.500.202603051304/tools/bin/STM32_Programmer_CLI \
   -c port=SWD -w build/Release/stm.elf -v -rst
 ```

@@ -17,19 +17,17 @@ void SimPlatform::onFrame(const uint8_t* msg, size_t len) {
     std::memcpy(&s, msg, sizeof(s));
 
     for (int i = 0; i < 3; ++i) {
-        imu_.sample_.accel[i] = s.accel[i];
-        imu_.sample_.gyro[i] = s.gyro[i];
+        imu_.sample.accel[i] = s.accel[i];
+        imu_.sample.gyro[i] = s.gyro[i];
     }
-    imu_.sample_.timeUs = s.timeUs;
-    imu_.fresh_ = true;
-    distLeft_.value_ = s.distLeftM;
-    distLeft_.timeUs_ = s.timeUs;
-    distLeft_.valid_ = true;
-    distRight_.value_ = s.distRightM;
-    distRight_.timeUs_ = s.timeUs;
-    distRight_.valid_ = true;
-    current_.value_ = s.currentA;
-    current_.valid_ = true;
+    imu_.sample.timeUs = s.timeUs;
+    imu_.fresh = true;
+    distLeft_.value = s.distLeftM;
+    distRight_.value = s.distRightM;
+    distLeft_.timeUs = distRight_.timeUs = s.timeUs;
+    distLeft_.fresh = distRight_.fresh = true;
+    current_.value = s.currentA;
+    current_.valid = true;
 
     proto::SimActuators a;
     a.motorCommand = motor_.command();

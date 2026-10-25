@@ -45,7 +45,6 @@ public:
 
     // CE stays high while streaming, so the chip sends FIFO entries back to back.
     void setStreaming(bool on);
-    bool queueNoAck(const uint8_t* data, uint8_t len);  // false if the 3-entry TX FIFO is full
 
     // Zero-copy async write: buf[0] is reserved for the command byte, buf[1..len] is the payload; keep
     // buf untouched until pollAsync() is Done. Refuses a full TX FIFO: writing one corrupts queued

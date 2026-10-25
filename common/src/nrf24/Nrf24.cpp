@@ -259,17 +259,6 @@ void Nrf24::setStreaming(bool on) {
     ce_.write(on);
 }
 
-bool Nrf24::queueNoAck(const uint8_t* data, uint8_t len) {
-    if (len == 0 || len > kMaxPayload) {
-        return false;
-    }
-    if (status() & 0x01) {  // TX FIFO full (see startQueueInPlace)
-        return false;
-    }
-    command(W_TX_PAYLOAD_NOACK, data, nullptr, len);
-    return true;
-}
-
 void Nrf24::startListening() {
     configReg_ |= PRIM_RX;
     writeRegister(CONFIG, configReg_);

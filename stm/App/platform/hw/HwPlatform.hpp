@@ -28,9 +28,9 @@ public:
         hal::IOutputPin& imuCs;
         stm32::DmaI2c& i2c;
         hal::IOutputPin& tofLeftXshut;
-        hal::IInputPin* tofLeftGpio1;
+        hal::IInputPin& tofLeftGpio1;
         hal::IOutputPin& tofRightXshut;
-        hal::IInputPin* tofRightGpio1;
+        hal::IInputPin& tofRightGpio1;
     };
 
     HwPlatform(const Deps& d, const Ism330dhcx::Config& imuCfg)

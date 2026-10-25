@@ -3,8 +3,6 @@
 #include "app_main.h"
 
 #include "App.hpp"
-#include "bench/RadioBench.hpp"
-#include "bench/StreamTest.hpp"
 #include "control/Controllers.hpp"
 #include "control/Estimators.hpp"
 #include "main.h"
@@ -44,8 +42,8 @@ stm32::Pin tofLeftXshut(TOF_L_XSHUT_GPIO_Port, TOF_L_XSHUT_Pin);
 stm32::InputPin tofLeftGpio1(TOF_L_INT_GPIO_Port, TOF_L_INT_Pin);
 stm32::Pin tofRightXshut(TOF_R_XSHUT_GPIO_Port, TOF_R_XSHUT_Pin);
 stm32::InputPin tofRightGpio1(TOF_R_INT_GPIO_Port, TOF_R_INT_Pin);
-HwPlatform platform(HwPlatform::Deps{clock, adc, imuSpi, imuCs, i2c, tofLeftXshut, &tofLeftGpio1,
-                                     tofRightXshut, &tofRightGpio1},
+HwPlatform platform(HwPlatform::Deps{clock, adc, imuSpi, imuCs, i2c, tofLeftXshut, tofLeftGpio1,
+                                     tofRightXshut, tofRightGpio1},
                     Ism330dhcx::Config{});
 #endif
 
@@ -71,19 +69,7 @@ void app_imu_data_ready_irq(uint32_t stamp) {
 void app_main(void) {
     clock.init();
 
-#if BIKE_RADIO_BENCH
-    static RadioBench bench(radio, clock, serial);
-    bench.run(nrf24::Config{});
-#elif BIKE_STREAM_TEST
-#if BIKE_STREAM_ACK
-    static StreamTest streamTest(radio, clock, serial, ledBlue, LinkMode::Ack);
-#else
-    static StreamTest streamTest(radio, clock, serial, ledBlue, LinkMode::NoAckFec);
-#endif
-    streamTest.run(nrf24::Config{});
-#endif
-
-    // Forwarding sink breaks the RadioStream <-> App construction cycle.
+    // Forwarding sink breaks the RadioLink <-> App construction cycle.
     static class Sink final : public ICommandSink {
     public:
         void onCommand(const proto::Command& cmd) override {
@@ -92,7 +78,7 @@ void app_main(void) {
         App* target = nullptr;
     } sink;
 
-    static RadioStream radioLink(radio, clock, sink);
+    static RadioLink radioLink(radio, clock, sink);
     static App application(App::Deps{
         clock,
         serial,
