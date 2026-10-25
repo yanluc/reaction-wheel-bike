@@ -1,0 +1,7 @@
+# GitHub language stats: ST libraries and CubeMX output are not our code.
+stm/Drivers/**               linguist-vendored
+test_stm_gazebo/Drivers/**   linguist-vendored
+stm/Core/**                  linguist-generated
+test_stm_gazebo/Core/**      linguist-generated
+stm/startup_*.s              linguist-generated
+test_stm_gazebo/startup_*.s  linguist-generated
