@@ -16,9 +16,8 @@ class HwPlatform final : public IPlatform {
 public:
     // Arduino pin wired to the current sensor's VOUT.
     static constexpr stm32::AdcDma::Channel kCurrentChannel = stm32::AdcDma::kA0;
-    static constexpr uint8_t kTofLeftAddress = 0x30;
-    static constexpr uint8_t kTofRightAddress = 0x31;
-    // Both ToF sensors are triggered together (one-shot) so a left/right pair describes one moment.
+    // Both ToF sensors (one per I2C bus, both at 0x29) are triggered together (one-shot) so a
+    // left/right pair describes one moment.
     static constexpr uint32_t kTofPeriodUs = 25000;  // 20 ms timing budget + read-out
 
     struct Deps {
@@ -26,18 +25,17 @@ public:
         stm32::AdcDma& adc;
         hal::ISpi& imuSpi;
         hal::IOutputPin& imuCs;
-        stm32::DmaI2c& i2c;
-        hal::IOutputPin& tofLeftXshut;
+        stm32::DmaI2c& i2cLeft;
         hal::IInputPin& tofLeftGpio1;
-        hal::IOutputPin& tofRightXshut;
+        stm32::DmaI2c& i2cRight;
         hal::IInputPin& tofRightGpio1;
     };
 
     HwPlatform(const Deps& d, const Ism330dhcx::Config& imuCfg)
         : d_(d),
           imu_(d.imuSpi, d.imuCs, d.clock, imuCfg),
-          distLeft_(d.i2c, d.tofLeftXshut, d.tofLeftGpio1, d.clock, Vl53l1x::Config{kTofLeftAddress}),
-          distRight_(d.i2c, d.tofRightXshut, d.tofRightGpio1, d.clock, Vl53l1x::Config{kTofRightAddress}),
+          distLeft_(d.i2cLeft, d.tofLeftGpio1, d.clock, Vl53l1x::Config{}),
+          distRight_(d.i2cRight, d.tofRightGpio1, d.clock, Vl53l1x::Config{}),
           currentIn_(d.adc, kCurrentChannel),
           current_(currentIn_),
           motor_(pwm_, dir_) {}
@@ -67,8 +65,6 @@ private:
     PwmDirMotor motor_;
     uint32_t lastImuSamples_ = 0;
     uint32_t lastTofTriggerUs_ = 0;
-    bool triggerLeft_ = false;
-    bool triggerRight_ = false;
 };
 
 }  // namespace bike

@@ -14,6 +14,7 @@ extern "C" {
 extern SPI_HandleTypeDef hspi1;
 extern SPI_HandleTypeDef hspi3;
 extern I2C_HandleTypeDef hi2c1;
+extern I2C_HandleTypeDef hi2c2;
 extern UART_HandleTypeDef hlpuart1;
 extern ADC_HandleTypeDef hadc1;
 }
@@ -37,13 +38,11 @@ SimPlatform platform(serial);
 stm32::AdcDma adc(&hadc1);
 stm32::DmaSpi imuSpi(&hspi3);
 stm32::Pin imuCs(IMU_CS_GPIO_Port, IMU_CS_Pin);
-stm32::DmaI2c i2c(&hi2c1);
-stm32::Pin tofLeftXshut(TOF_L_XSHUT_GPIO_Port, TOF_L_XSHUT_Pin);
+stm32::DmaI2c i2cLeft(&hi2c1);
 stm32::InputPin tofLeftGpio1(TOF_L_INT_GPIO_Port, TOF_L_INT_Pin);
-stm32::Pin tofRightXshut(TOF_R_XSHUT_GPIO_Port, TOF_R_XSHUT_Pin);
+stm32::DmaI2c i2cRight(&hi2c2);
 stm32::InputPin tofRightGpio1(TOF_R_INT_GPIO_Port, TOF_R_INT_Pin);
-HwPlatform platform(HwPlatform::Deps{clock, adc, imuSpi, imuCs, i2c, tofLeftXshut, tofLeftGpio1,
-                                     tofRightXshut, tofRightGpio1},
+HwPlatform platform(HwPlatform::Deps{clock, adc, imuSpi, imuCs, i2cLeft, tofLeftGpio1, i2cRight, tofRightGpio1},
                     Ism330dhcx::Config{});
 #endif
 

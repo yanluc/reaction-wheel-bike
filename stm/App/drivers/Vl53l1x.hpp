@@ -1,7 +1,8 @@
 #pragma once
-// VL53L1X time-of-flight sensor (register sequence from ST's ULD). init() is blocking (boot, new
-// address, ~0.1 s calibration). Measurements are one-shot: trigger() starts one, so the MCU can start
-// several sensors at the same moment. poll() reads the result by DMA when GPIO1 signals data ready.
+// VL53L1X time-of-flight sensor (register sequence from ST's ULD), default address 0x29: one sensor
+// per I2C bus. init() is blocking (boot, ~0.1 s calibration). Measurements are one-shot: trigger()
+// starts one, so the MCU can start several sensors at the same moment. poll() reads the result by DMA
+// when GPIO1 signals data ready.
 
 #include <cstdint>
 
@@ -12,20 +13,16 @@ namespace bike {
 
 class Vl53l1x final : public IDistanceSensor {
 public:
-    static constexpr uint8_t kDefaultAddress = 0x29;
-
     struct Config {
-        uint8_t address = kDefaultAddress;  // 7-bit, set after boot (volatile)
-        uint16_t timingBudgetMs = 20;       // short mode: 15, 20, 33, 50, 100, 200, 500
+        uint16_t timingBudgetMs = 20;  // short mode: 15, 20, 33, 50, 100, 200, 500
     };
 
-    Vl53l1x(hal::II2c& bus, hal::IOutputPin& xshut, hal::IInputPin& gpio1, hal::IClock& clock, const Config& cfg)
-        : bus_(bus), xshut_(xshut), gpio1_(gpio1), clock_(clock), cfg_(cfg) {}
+    Vl53l1x(hal::II2c& bus, hal::IInputPin& gpio1, hal::IClock& clock, const Config& cfg)
+        : bus_(bus), gpio1_(gpio1), clock_(clock), cfg_(cfg) {}
 
-    void shutdown() { xshut_.write(false); }
     bool init() override;
     bool read(float& meters, uint32_t& timeUs) override;
-    bool trigger();  // starts one measurement (async); false if not idle or the bus is taken
+    bool trigger();  // starts one measurement (async); false if not idle or the bus is busy
     bool idle() const { return !ok_ || state_ == State::Idle; }
     void poll();
     uint32_t timingBudgetUs() const { return cfg_.timingBudgetMs * 1000u; }
@@ -51,11 +48,9 @@ private:
     hal::II2c::Result busResult();  // bus_.result(), counting errors
 
     hal::II2c& bus_;
-    hal::IOutputPin& xshut_;
     hal::IInputPin& gpio1_;
     hal::IClock& clock_;
     Config cfg_;
-    uint8_t addr_ = kDefaultAddress;
 
     bool ok_ = false;
     State state_ = State::Idle;

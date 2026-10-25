@@ -27,7 +27,7 @@ inzynierka/
      nRF24L01+ ───────────┤ SPI1 PA5/PA6/PA7, CE PD15, CSN PD14, IRQ PF12                           │
      ACS37041 (prąd) ─────┤ ADC1 A0 / PA3                                                           │
      ISM330DHCX (IMU) ────┤ SPI3 PC10/PC11/PC12, CS PD2, INT1 PF3 (EXTI)                            │
-     2× VL53L1X (ToF) ────┤ I2C1 PB8/PB9, XSHUT PF15/PD8, GPIO1 PF14/PD9                            │
+     2× VL53L1X (ToF) ────┤ I2C1 PB8/PB9 + I2C2 PF1/PF0, GPIO1 PF14/PD9                             │
      silnik PWM + DIR ─ ─ ┤ do ustalenia                                                            │
                           └─────────────────────────────────────────────────────────────────────────┘
                                    ((( 2.4 GHz, kanał 20 )))
@@ -64,10 +64,11 @@ inzynierka/
 | | GND | GND | – | – |
 | | SDA | D14 | PB9 | I2C1_SDA, 400 kHz, DMA |
 | | SCL | D15 | PB8 | I2C1_SCL |
-| | XSHUT | D2 | PF15 | GPIO open-drain `TOF_L_XSHUT`, start 0 |
 | | GPIO1 | D4 | PF14 | GPIO in `TOF_L_INT` |
-| VL53L1X prawy | VIN, GND, SDA, SCL | jak lewy (ta sama magistrala) | – | – |
-| | XSHUT | D1 | PD8 | GPIO open-drain `TOF_R_XSHUT`, start 0 |
+| VL53L1X prawy | VIN | 3V3 | – | – |
+| | GND | GND | – | – |
+| | SDA | D68 | PF0 | I2C2_SDA, 400 kHz, DMA |
+| | SCL | D69 | PF1 | I2C2_SCL |
 | | GPIO1 | D0 | PD9 | GPIO in `TOF_R_INT` |
 | ST-LINK (CN1, USB) | – | USB do laptopa | PG7/PG8 | LPUART1 2 Mbaud (VCP), SWD |
 
@@ -75,8 +76,8 @@ inzynierka/
 - **Stan czujnika prądu:** podłączenie VOUT → A0 to plan. W ostatnim pomiarze A0–A2 pokazywały ~0.4–0.47 V, czyli czujnik nie był wpięty, bo bez prądu powinno być ~1.65 V.
 - **Numery Dxx** to oznaczenia złączy Zio (CN7–CN10), zweryfikowane z mapą wariantu STM32duino dla NUCLEO-L496ZG/L4A6ZG.
 - **IMU na osobnej magistrali (SPI3):** transfery radia na SPI1 nie opóźniają odczytu IMU i odwrotnie. Płytka Adafruit domyślnie startuje w trybie I2C. Pierwszy zapis po SPI ustawia `I2C_disable`, a sam tryb SPI wybiera stan niski na CS.
-- **Dwa VL53L1X mają ten sam adres 0x29.** Przy starcie oba są trzymane w resecie (XSHUT=0). Potem po kolei: zwolnienie XSHUT, zmiana adresu na 0x30 (lewy) i 0x31 (prawy). Adres nie jest pamiętany po wyłączeniu, więc sekwencja idzie przy każdym starcie.
-- **XSHUT i GPIO1 są bez podciągania w MCU.** XSHUT jest open-drain, bo moduły zwykle podciągają go do zasilania czujnika (2.8 V), a open-drain jest bezpieczny w obu przypadkach. GPIO1 też ma zwykle podciąganie na module. Jaka to płytka (Adafruit 3967 czy Pololu 3415), jeszcze nie sprawdzone, bo strona kamami blokuje pobranie.
+- **Każdy VL53L1X ma własną magistralę I2C** (lewy I2C1, prawy I2C2), więc oba zostają na fabrycznym adresie 0x29 i nie trzeba ich przestawiać przez XSHUT. Pomiary startują równocześnie: oba zapisy wyzwalające idą przez DMA równolegle, przesunięcie to kilka µs.
+- **XSHUT nie jest podłączony.** Moduły podciągają go do zasilania czujnika, więc czujnik jest zawsze włączony. GPIO1 jest bez podciągania w MCU, bo ma je zwykle moduł. Jaka to płytka (Adafruit 3967 czy Pololu 3415), jeszcze nie sprawdzone, bo strona kamami blokuje pobranie.
 - **Zarezerwowane dla silnika:** D6 (PE9, TIM1_CH1) na PWM, D5 (PE11) lub D7 (PF13) na DIR. Na enkoder koła reakcyjnego zostaje wolna para timera, np. TIM3 lub TIM4.
 - **Zajęty pin PG6:** steruje włącznikiem zasilania USB OTG (STMPS2151) i jest wyjściem. Nie podłączać do niego żadnego wyjścia, np. IRQ.
 
@@ -170,7 +171,7 @@ Log z `tools/link_console.py --port <ST-LINK> --baud 2000000`:
 | `IMU ok=1 who=0x6B` | WHO_AM_I się zgadza | brak `ok`: okablowanie SPI3/CS, zasilanie |
 | `samples/s≈6667 overflows=0` | każda próbka dociera | `samples/s≈0` po starcie: tryb impulsowy INT1 (COUNTER_BDR_REG1 0x0B bit 7, z pamięci karty katalogowej, do potwierdzenia) albo przewód INT1 |
 | `loops/s ... roll=` | w spoczynku stały, ±0.6 rad blokuje uzbrojenie | znak/osie: `Ism330dhcx::Config::axis` |
-| `ToF L ok=1 ... st=9`, sensowne mm | oba czujniki mierzą | `ok=0`: XSHUT/I2C; `bad` rośnie: poza zasięgiem lub zła powierzchnia; `tmo` rośnie: brak sygnału GPIO1 (przewód) |
+| `ToF L ok=1 ... st=9`, sensowne mm | oba czujniki mierzą | `ok=0`: zasilanie/I2C; `bad` rośnie: poza zasięgiem lub zła powierzchnia; `tmo` rośnie: brak sygnału GPIO1 (przewód) |
 
 ## Czujniki odległości (`Vl53l1x`)
 

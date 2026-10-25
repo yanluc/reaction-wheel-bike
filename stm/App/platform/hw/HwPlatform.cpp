@@ -5,10 +5,6 @@
 namespace bike {
 
 bool HwPlatform::init() {
-    // Both ToF sensors boot at 0x29: hold both in reset, then bring them up one by one with new addresses.
-    distLeft_.shutdown();
-    distRight_.shutdown();
-    d_.clock.delayUs(5000);
     const bool imuOk = imu_.init();
     const bool leftOk = distLeft_.init();
     const bool rightOk = distRight_.init();
@@ -21,15 +17,12 @@ void HwPlatform::poll() {
     distLeft_.poll();
     distRight_.poll();
     const uint32_t now = d_.clock.micros();
-    if (!triggerLeft_ && !triggerRight_ && now - lastTofTriggerUs_ >= kTofPeriodUs && distLeft_.idle() &&
-        distRight_.idle()) {
+    if (now - lastTofTriggerUs_ >= kTofPeriodUs && distLeft_.idle() && distRight_.idle()) {
         lastTofTriggerUs_ = now;
-        triggerLeft_ = distLeft_.ok();
-        triggerRight_ = distRight_.ok();
+        // Separate buses: both DMA writes start within a few us and run in parallel.
+        distLeft_.trigger();
+        distRight_.trigger();
     }
-    // Back to back: the second start follows the first by one short I2C write (~0.1 ms).
-    if (triggerLeft_ && distLeft_.trigger()) triggerLeft_ = false;
-    if (triggerRight_ && distRight_.trigger()) triggerRight_ = false;
 }
 
 // uint32_t is unsigned long on arm-none-eabi: %lu.
@@ -51,7 +44,7 @@ int HwPlatform::diagnostics(uint8_t line, char* out, int size) {
             return std::snprintf(
                 out, size, "ToF L ok=%d %umm st=%u n=%lu bad=%lu | R ok=%d %umm st=%u n=%lu bad=%lu | i2c err=%lu bus=%lu tmo=%lu",
                 l.ok(), l.lastMm(), l.lastStatus(), l.measurements(), l.invalid(), r.ok(), r.lastMm(),
-                r.lastStatus(), r.measurements(), r.invalid(), d_.i2c.errors(), l.busErrors() + r.busErrors(),
+                r.lastStatus(), r.measurements(), r.invalid(), d_.i2cLeft.errors() + d_.i2cRight.errors(), l.busErrors() + r.busErrors(),
                 l.timeouts() + r.timeouts());
         case 2: {
             if (!d_.adc.running()) {

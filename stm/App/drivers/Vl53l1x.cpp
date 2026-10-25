@@ -3,7 +3,7 @@
 namespace bike {
 namespace {
 
-constexpr uint16_t kI2cAddress = 0x0001;
+constexpr uint8_t kAddress = 0x29;  // 7-bit, factory default
 constexpr uint16_t kVhvLoopBound = 0x0008;
 constexpr uint16_t kVhvStart = 0x000B;
 constexpr uint16_t kTioHvStatus = 0x0031;
@@ -47,18 +47,18 @@ constexpr TimingBudget kShortModeBudgets[] = {
 
 }  // namespace
 
-bool Vl53l1x::wrByte(uint16_t reg, uint8_t v) { return bus_.write(addr_, reg, &v, 1); }
+bool Vl53l1x::wrByte(uint16_t reg, uint8_t v) { return bus_.write(kAddress, reg, &v, 1); }
 
 bool Vl53l1x::wrWord(uint16_t reg, uint16_t v) {
     const uint8_t b[2] = {static_cast<uint8_t>(v >> 8), static_cast<uint8_t>(v)};
-    return bus_.write(addr_, reg, b, 2);
+    return bus_.write(kAddress, reg, b, 2);
 }
 
-bool Vl53l1x::rdByte(uint16_t reg, uint8_t& v) { return bus_.read(addr_, reg, &v, 1); }
+bool Vl53l1x::rdByte(uint16_t reg, uint8_t& v) { return bus_.read(kAddress, reg, &v, 1); }
 
 bool Vl53l1x::rdWord(uint16_t reg, uint16_t& v) {
     uint8_t b[2];
-    if (!bus_.read(addr_, reg, b, 2)) return false;
+    if (!bus_.read(kAddress, reg, b, 2)) return false;
     v = static_cast<uint16_t>((b[0] << 8) | b[1]);
     return true;
 }
@@ -76,9 +76,6 @@ bool Vl53l1x::waitDataReady(uint32_t timeoutMs) {
 bool Vl53l1x::init() {
     ok_ = false;
     state_ = State::Idle;
-    addr_ = kDefaultAddress;
-    xshut_.write(true);
-    clock_.delayUs(2000);
 
     uint8_t booted = 0;
     const uint32_t start = clock_.millis();
@@ -86,14 +83,10 @@ bool Vl53l1x::init() {
         if (clock_.millis() - start > 100) return false;
         clock_.delayUs(1000);
     }
-    if (cfg_.address != kDefaultAddress) {
-        if (!wrByte(kI2cAddress, cfg_.address)) return false;
-        addr_ = cfg_.address;
-    }
     uint16_t model = 0;
     if (!rdWord(kModelId, model) || model != 0xEACC) return false;
 
-    if (!bus_.write(addr_, kConfigStart, kDefaultConfig, sizeof(kDefaultConfig))) return false;
+    if (!bus_.write(kAddress, kConfigStart, kDefaultConfig, sizeof(kDefaultConfig))) return false;
     wrByte(kInterruptClear, 0x01);
     wrByte(kModeStart, 0x40);
     if (!waitDataReady(150)) return false;
@@ -136,7 +129,7 @@ void Vl53l1x::finishResult() {
 }
 
 bool Vl53l1x::trigger() {
-    if (!ok_ || state_ != State::Idle || !bus_.startWrite(addr_, kModeStart, &oneShot_, 1)) {
+    if (!ok_ || state_ != State::Idle || !bus_.startWrite(kAddress, kModeStart, &oneShot_, 1)) {
         return false;
     }
     state_ = State::Triggering;
@@ -172,7 +165,7 @@ void Vl53l1x::poll() {
             if (clock_.micros() - startUs_ > 3 * timingBudgetUs()) {
                 ++timeouts_;
                 state_ = State::Idle;
-            } else if (gpio1_.read() && bus_.startRead(addr_, kResultBlock, result_, sizeof(result_))) {
+            } else if (gpio1_.read() && bus_.startRead(kAddress, kResultBlock, result_, sizeof(result_))) {
                 state_ = State::ReadResult;
             }
             break;
@@ -184,7 +177,7 @@ void Vl53l1x::poll() {
                 break;
             }
             finishResult();
-            state_ = bus_.startWrite(addr_, kInterruptClear, &clear_, 1) ? State::ClearIrq : State::Idle;
+            state_ = bus_.startWrite(kAddress, kInterruptClear, &clear_, 1) ? State::ClearIrq : State::Idle;
             break;
         case State::ClearIrq:
             if (busResult() != R::Pending) state_ = State::Idle;
