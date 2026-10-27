@@ -77,8 +77,8 @@ inzynierka/
 - **Numery Dxx** to oznaczenia złączy Zio (CN7–CN10), zweryfikowane z mapą wariantu STM32duino dla NUCLEO-L496ZG/L4A6ZG.
 - **IMU na osobnej magistrali (SPI3):** transfery radia na SPI1 nie opóźniają odczytu IMU i odwrotnie. Płytka Adafruit domyślnie startuje w trybie I2C. Pierwszy zapis po SPI ustawia `I2C_disable`, a sam tryb SPI wybiera stan niski na CS.
 - **Każdy VL53L1X ma własną magistralę I2C** (lewy I2C1, prawy I2C2), więc oba zostają na fabrycznym adresie 0x29 i nie trzeba ich przestawiać przez XSHUT. Pomiary startują równocześnie: oba zapisy wyzwalające idą przez DMA równolegle, przesunięcie to kilka µs.
-- **XSHUT nie jest podłączony.** Moduły podciągają go do zasilania czujnika, więc czujnik jest zawsze włączony. GPIO1 jest bez podciągania w MCU, bo ma je zwykle moduł. Jaka to płytka (Adafruit 3967 czy Pololu 3415), jeszcze nie sprawdzone, bo strona kamami blokuje pobranie.
-- **Zarezerwowane dla silnika:** D6 (PE9, TIM1_CH1) na PWM, D5 (PE11) lub D7 (PF13) na DIR. Na enkoder koła reakcyjnego zostaje wolna para timera, np. TIM3 lub TIM4.
+- **XSHUT nie jest podłączony.** Moduły podciągają go do zasilania czujnika, więc czujnik jest zawsze włączony. GPIO1 jest bez podciągania w MCU, bo ma je moduł.
+- **Zarezerwowane dla silnika:** D6 (PE9, TIM1_CH1) na PWM, D5 (PE11) lub D7 (PF13) na DIR.
 - **Zajęty pin PG6:** steruje włącznikiem zasilania USB OTG (STMPS2151) i jest wyjściem. Nie podłączać do niego żadnego wyjścia, np. IRQ.
 
 ### Baza: Waveshare RP2040-One
@@ -144,11 +144,10 @@ USB-C do laptopa: ramki binarne przez CDC. GP16 to wbudowana dioda WS2812, nieu�
   - prąd 50 Hz;
   - telemetria radiowa 100 Hz;
   - telemetria po kablu 20 Hz;
-  - statystyki co 1 s w logu.
 
 ## IMU (`Ism330dhcx`)
 
-- **Konfiguracja:** akcelerometr ±4 g, żyroskop ±1000 dps, oba ODR 6.66 kHz, BDU. INT1 daje impuls 75 µs przy każdej próbce żyroskopu. Tryb impulsowy jest konieczny, bo przy poziomie zatrzaśniętym jeden zgubiony odczyt zatrzymałby przerwania od zbocza.
+- **Konfiguracja:** akcelerometr ±4 g, żyroskop ±1000 dps, oba ODR 6.67 kHz, BDU. INT1 daje impuls 75 µs przy każdej próbce żyroskopu. Tryb impulsowy jest konieczny, bo przy poziomie zatrzaśniętym jeden zgubiony odczyt zatrzymałby przerwania od zbocza.
 - **Odczyt:** jedno przerwanie na próbkę (EXTI3), bez przerwań DMA. Przerwanie:
   1. kończy poprzedni odczyt: CS w górę, 12 B do kolejki ze znacznikiem czasu (licznik cykli DWT);
   2. startuje nowy odczyt DMA 13 B od rejestru 0x22 (żyroskop, potem akcelerometr).
